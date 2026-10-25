@@ -11,6 +11,7 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -75,7 +76,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
+            val appThemeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
+            val isDark = when (appThemeMode) {
+                1 -> false
+                2 -> true
+                else -> isSystemInDarkTheme()
+            }
+            MyApplicationTheme(darkTheme = isDark) {
                 MainAppContent(viewModel = viewModel)
             }
         }
@@ -109,6 +116,12 @@ fun MainAppContent(viewModel: MainViewModel) {
     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
     val firebaseUser by viewModel.firebaseUser.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val isSearchingOnline by viewModel.isSearchingOnline.collectAsStateWithLifecycle()
+    val isSupporter by viewModel.isSupporter.collectAsStateWithLifecycle()
+    val purchaseMessage by viewModel.purchaseMessage.collectAsStateWithLifecycle()
+    val appThemeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
+    val autoDownload by viewModel.autoDownload.collectAsStateWithLifecycle()
+    val wifiOnlyDownload by viewModel.wifiOnlyDownload.collectAsStateWithLifecycle()
 
     // Handle back button for sub-screens
     BackHandler(enabled = selectedPodcastDetail != null || selectedTab != 0) {
@@ -254,6 +267,8 @@ fun MainAppContent(viewModel: MainViewModel) {
                                 selectedCategory = selectedCategory,
                                 onSelectCategory = { viewModel.selectCategory(it) },
                                 podcasts = explorePodcasts,
+                                searchQuery = searchQuery,
+                                isSearchingOnline = isSearchingOnline,
                                 onPodcastClicked = { viewModel.openPodcastDetail(it) },
                                 onToggleSubscribe = { viewModel.toggleSubscription(it) }
                             )
@@ -285,13 +300,26 @@ fun MainAppContent(viewModel: MainViewModel) {
                                 subscribedCount = subscribedPodcasts.size,
                                 currentPlayingEpisodeId = playerState.currentEpisode?.id,
                                 isPlaying = playerState.isPlaying,
+                                isSupporter = isSupporter,
+                                purchaseMessage = purchaseMessage,
+                                appThemeMode = appThemeMode,
+                                autoDownload = autoDownload,
+                                wifiOnlyDownload = wifiOnlyDownload,
                                 onPlayEpisode = { viewModel.playEpisode(it) },
                                 onToggleQueue = { viewModel.toggleQueue(it.id) },
                                 onToggleDownload = { viewModel.toggleDownload(it.id) },
                                 onToggleFavoriteEpisode = { viewModel.toggleFavoriteEpisode(it.id) },
                                 onPodcastClicked = { viewModel.openPodcastDetail(it) },
                                 onToggleFavoritePodcast = { viewModel.toggleFavoritePodcast(it) },
-                                onOpenAuthDialog = { viewModel.showAuthDialog() }
+                                onOpenAuthDialog = { viewModel.showAuthDialog() },
+                                onBuyDeveloperSupport = { activity -> viewModel.buyDeveloperSupport(activity) },
+                                onSimulateSupport = { viewModel.simulateDeveloperSupport() },
+                                onClearPurchaseMessage = { viewModel.clearPurchaseMessage() },
+                                onSetThemeMode = { viewModel.setThemeMode(it) },
+                                onToggleAutoDownload = { viewModel.toggleAutoDownload() },
+                                onToggleWifiOnly = { viewModel.toggleWifiOnlyDownload() },
+                                onClearHistory = { viewModel.clearListeningHistory() },
+                                onClearDownloads = { viewModel.clearDownloadedEpisodes() }
                             )
                         }
                     }

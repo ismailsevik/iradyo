@@ -1,8 +1,11 @@
 package com.example.ui
 
+import android.app.Activity
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.billing.BillingManager
 import com.example.data.local.AppDatabase
 import com.example.data.model.Category
 import com.example.data.model.Episode
@@ -13,6 +16,8 @@ import com.example.data.remote.FirebaseSyncRepository
 import com.example.data.repository.PodcastRepository
 import com.example.player.AudioPlayerManager
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,9 +28,18 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val prefs = application.getSharedPreferences("iradyo_settings", Context.MODE_PRIVATE)
+
     private val database = AppDatabase.getDatabase(application)
     val repository = PodcastRepository(database)
     val firebaseSync = FirebaseSyncRepository(application)
+
+    val billingManager = BillingManager(application) {
+        // Supporter unlocked!
+    }
+
+    val isSupporter: StateFlow<Boolean> = billingManager.isSupporter
+    val purchaseMessage: StateFlow<String?> = billingManager.purchaseMessage
 
     val firebaseUser: StateFlow<FirebaseUser?> = firebaseSync.firebaseUser
     val isSyncing: StateFlow<Boolean> = firebaseSync.isSyncing
@@ -67,6 +81,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isAuthDialogVisible = MutableStateFlow(false)
     val isAuthDialogVisible: StateFlow<Boolean> = _isAuthDialogVisible.asStateFlow()
 
+    // Real Online Search States
+    private val _onlineSearchResults = MutableStateFlow<List<Podcast>>(emptyList())
+    val onlineSearchResults: StateFlow<List<Podcast>> = _onlineSearchResults.asStateFlow()
+
+    private val _isSearchingOnline = MutableStateFlow(false)
+    val isSearchingOnline: StateFlow<Boolean> = _isSearchingOnline.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    // App Settings States
+    private val _appThemeMode = MutableStateFlow(prefs.getInt("theme_mode", 0)) // 0: System, 1: Light, 2: Dark
+    val appThemeMode: StateFlow<Int> = _appThemeMode.asStateFlow()
+
+    private val _autoDownload = MutableStateFlow(prefs.getBoolean("auto_download", false))
+    val autoDownload: StateFlow<Boolean> = _autoDownload.asStateFlow()
+
+    private val _wifiOnlyDownload = MutableStateFlow(prefs.getBoolean("wifi_only", true))
+    val wifiOnlyDownload: StateFlow<Boolean> = _wifiOnlyDownload.asStateFlow()
+
     // Data streams
     val categories = repository.categories
 
@@ -103,19 +136,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Filtered explore podcasts based on search and category
+    // Filtered explore podcasts combining local and online live search
     val exploreFilteredPodcasts: StateFlow<List<Podcast>> = combine(
         allPodcasts,
+        onlineSearchResults,
         searchQuery,
         selectedCategory
-    ) { podcasts, query, category ->
-        podcasts.filter { podcast ->
-            val matchesCategory = category == null || podcast.category.contains(category.name, ignoreCase = true)
-            val matchesQuery = query.isBlank() ||
-                    podcast.title.contains(query, ignoreCase = true) ||
-                    podcast.author.contains(query, ignoreCase = true) ||
-                    podcast.description.contains(query, ignoreCase = true)
-            matchesCategory && matchesQuery
+    ) { localPodcasts, onlineList, query, category ->
+        if (query.isNotBlank() && onlineList.isNotEmpty()) {
+            val combined = (onlineList + localPodcasts).distinctBy { it.id }
+            if (category != null) {
+                combined.filter { it.category.contains(category.name, ignoreCase = true) }
+            } else combined
+        } else {
+            localPodcasts.filter { podcast ->
+                val matchesCategory = category == null || podcast.category.contains(category.name, ignoreCase = true)
+                val matchesQuery = query.isBlank() ||
+                        podcast.title.contains(query, ignoreCase = true) ||
+                        podcast.author.contains(query, ignoreCase = true) ||
+                        podcast.description.contains(query, ignoreCase = true)
+                matchesCategory && matchesQuery
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -145,6 +186,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+        searchJob?.cancel()
+        if (query.trim().length >= 2) {
+            searchJob = viewModelScope.launch {
+                delay(400L) // debounce
+                _isSearchingOnline.value = true
+                val results = repository.searchOnlinePodcasts(query)
+                _onlineSearchResults.value = results
+                _isSearchingOnline.value = false
+            }
+        } else {
+            _onlineSearchResults.value = emptyList()
+            _isSearchingOnline.value = false
+        }
     }
 
     fun selectCategory(category: Category?) {
@@ -153,6 +207,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openPodcastDetail(podcast: Podcast) {
         _selectedPodcastDetail.value = podcast
+        // If it has RSS URL or needs fresh episodes, fetch them in background!
+        val feedUrl = extractFeedUrl(podcast.description)
+        if (feedUrl.isNotBlank()) {
+            viewModelScope.launch {
+                repository.fetchOnlineEpisodesForPodcast(podcast, feedUrl)
+            }
+        }
+    }
+
+    private fun extractFeedUrl(desc: String): String {
+        return if (desc.contains("RSS:") || desc.contains("RSS Kaynağı:")) {
+            val part = desc.substringAfter("RSS").substringAfter(":")
+            part.trim().split(" ").firstOrNull() ?: ""
+        } else if (desc.startsWith("http")) {
+            desc.trim()
+        } else ""
     }
 
     fun closePodcastDetail() {
@@ -208,18 +278,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         playerManager.setSleepTimer(minutes)
     }
 
+    // Settings Functions
+    fun setThemeMode(mode: Int) {
+        _appThemeMode.value = mode
+        prefs.edit().putInt("theme_mode", mode).apply()
+    }
+
+    fun toggleAutoDownload() {
+        val newVal = !_autoDownload.value
+        _autoDownload.value = newVal
+        prefs.edit().putBoolean("auto_download", newVal).apply()
+    }
+
+    fun toggleWifiOnlyDownload() {
+        val newVal = !_wifiOnlyDownload.value
+        _wifiOnlyDownload.value = newVal
+        prefs.edit().putBoolean("wifi_only", newVal).apply()
+    }
+
+    fun clearListeningHistory() {
+        viewModelScope.launch {
+            repository.clearListeningHistory()
+        }
+    }
+
+    fun clearDownloadedEpisodes() {
+        viewModelScope.launch {
+            repository.clearDownloads()
+        }
+    }
+
+    // In-App Billing: 10 TL Destek
+    fun buyDeveloperSupport(activity: Activity) {
+        billingManager.launchPurchaseFlow(activity)
+    }
+
+    fun simulateDeveloperSupport() {
+        billingManager.simulateSuccessfulPurchase()
+    }
+
+    fun clearPurchaseMessage() {
+        billingManager.clearMessage()
+    }
+
     // User interactions + Firebase cloud synchronization
     fun toggleSubscription(podcastId: String) {
         viewModelScope.launch {
             val podcast = repository.getPodcastById(podcastId)
-            repository.toggleSubscription(podcastId)
-            podcast?.let {
-                val newSub = !it.isSubscribed
-                firebaseSync.syncSubscriptionToCloud(it, newSub)
-            }
-            _selectedPodcastDetail.value?.let { current ->
-                if (current.id == podcastId) {
-                    _selectedPodcastDetail.value = current.copy(isSubscribed = !current.isSubscribed)
+                ?: _onlineSearchResults.value.find { it.id == podcastId }
+
+            if (podcast != null) {
+                repository.savePodcast(podcast)
+                repository.toggleSubscription(podcastId)
+                val newSub = !podcast.isSubscribed
+                firebaseSync.syncSubscriptionToCloud(podcast, newSub)
+
+                _selectedPodcastDetail.value?.let { current ->
+                    if (current.id == podcastId) {
+                        _selectedPodcastDetail.value = current.copy(isSubscribed = newSub)
+                    }
                 }
             }
         }
@@ -228,14 +345,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleFavoritePodcast(podcastId: String) {
         viewModelScope.launch {
             val podcast = repository.getPodcastById(podcastId)
-            repository.toggleFavoritePodcast(podcastId)
-            podcast?.let {
-                val newFav = !it.isFavorited
-                firebaseSync.syncFavoriteToCloud(it, newFav)
-            }
-            _selectedPodcastDetail.value?.let { current ->
-                if (current.id == podcastId) {
-                    _selectedPodcastDetail.value = current.copy(isFavorited = !current.isFavorited)
+                ?: _onlineSearchResults.value.find { it.id == podcastId }
+
+            if (podcast != null) {
+                repository.savePodcast(podcast)
+                repository.toggleFavoritePodcast(podcastId)
+                val newFav = !podcast.isFavorited
+                firebaseSync.syncFavoriteToCloud(podcast, newFav)
+
+                _selectedPodcastDetail.value?.let { current ->
+                    if (current.id == podcastId) {
+                        _selectedPodcastDetail.value = current.copy(isFavorited = newFav)
+                    }
                 }
             }
         }
@@ -308,5 +429,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         playerManager.release()
+        billingManager.destroy()
     }
 }

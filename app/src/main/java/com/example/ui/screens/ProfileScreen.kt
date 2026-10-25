@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,33 +21,46 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brightness4
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwitchAccount
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,16 +84,22 @@ import com.example.ui.theme.GoogleBlue
 import com.example.ui.theme.GoogleGreen
 import com.example.ui.theme.GoogleRed
 import com.example.ui.theme.GoogleYellow
+import com.google.firebase.auth.FirebaseUser
 
 @Composable
 fun ProfileScreen(
     currentUser: UserProfile?,
-    firebaseUser: com.google.firebase.auth.FirebaseUser?,
+    firebaseUser: FirebaseUser?,
     favoritePodcasts: List<Podcast>,
     listeningHistory: List<Episode>,
     subscribedCount: Int,
     currentPlayingEpisodeId: String?,
     isPlaying: Boolean,
+    isSupporter: Boolean,
+    purchaseMessage: String?,
+    appThemeMode: Int,
+    autoDownload: Boolean,
+    wifiOnlyDownload: Boolean,
     onPlayEpisode: (Episode) -> Unit,
     onToggleQueue: (Episode) -> Unit,
     onToggleDownload: (Episode) -> Unit,
@@ -86,9 +107,24 @@ fun ProfileScreen(
     onPodcastClicked: (Podcast) -> Unit,
     onToggleFavoritePodcast: (String) -> Unit,
     onOpenAuthDialog: () -> Unit,
+    onBuyDeveloperSupport: (Activity) -> Unit,
+    onSimulateSupport: () -> Unit,
+    onClearPurchaseMessage: () -> Unit,
+    onSetThemeMode: (Int) -> Unit,
+    onToggleAutoDownload: () -> Unit,
+    onToggleWifiOnly: () -> Unit,
+    onClearHistory: () -> Unit,
+    onClearDownloads: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var profileSubTab by remember { mutableIntStateOf(0) } // 0: Favorites, 1: History, 2: Settings
+    val context = LocalContext.current
+
+    // Dialog states for Settings
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showClearDownloadsDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -116,29 +152,68 @@ fun ProfileScreen(
                         GoogleBlue
                     }
 
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(avatarColor)
-                    ) {
-                        Text(
-                            text = currentUser?.fullName?.take(1)?.uppercase() ?: "İ",
-                            color = Color.White,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Box {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(avatarColor)
+                        ) {
+                            Text(
+                                text = currentUser?.fullName?.take(1)?.uppercase() ?: "İ",
+                                color = Color.White,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Gold Supporter Badge overlay
+                        if (isSupporter) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .clip(CircleShape)
+                                    .background(GoogleYellow)
+                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = "Destekçi Rozeti",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = currentUser?.fullName ?: "Misafir Kullanıcı",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = currentUser?.fullName ?: "Misafir Kullanıcı",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (isSupporter) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = GoogleYellow.copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "🏅 Destekçi",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB06000),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
 
                     Text(
                         text = currentUser?.email ?: "ismailseviktr@gmail.com",
@@ -193,7 +268,7 @@ fun ProfileScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -231,7 +306,7 @@ fun ProfileScreen(
 
         // Sub Tabs: Beğenilenler, Dinleme Geçmişi, Ayarlar
         item {
-            val tabs = listOf("Beğenilen Podcast'ler", "Dinleme Geçmişi", "Ayarlar")
+            val tabs = listOf("Beğenilen Podcast'ler", "Dinleme Geçmişi", "Ayarlar & Destek")
             TabRow(
                 selectedTabIndex = profileSubTab,
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -258,7 +333,7 @@ fun ProfileScreen(
 
         when (profileSubTab) {
             0 -> {
-                // Favorites Tab (Beğenilenler)
+                // Favorites Tab
                 if (favoritePodcasts.isEmpty()) {
                     item {
                         Column(
@@ -392,33 +467,283 @@ fun ProfileScreen(
                 }
             }
             2 -> {
-                // Settings Tab
+                // Settings & In-App Purchase Tab
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
+
+                        // --- 10 TL IN-APP BILLING SUPPORT CARD ---
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (isSupporter) Color(0xFFFFF8E1) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isSupporter) GoogleYellow else GoogleBlue.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                                .testTag("support_billing_card")
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = if (isSupporter) Color(0xFFFFA000) else GoogleBlue,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = if (isSupporter) "Geliştirici Destekçisi (10 ₺ Ödendi)" else "Geliştiriciye Destek Ol (10 ₺)",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (isSupporter) "Katkınız için minnettarız! Destekçi rozetiniz profilinizde parlıyor." else "Google Play In-App Billing ile 10 ₺ bağış yaparak iRadyo'yu destekleyin.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            (context as? Activity)?.let { onBuyDeveloperSupport(it) }
+                                                ?: onSimulateSupport()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSupporter) Color(0xFFFFA000) else GoogleBlue
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f).testTag("buy_support_10tl_button")
+                                    ) {
+                                        Text(
+                                            text = if (isSupporter) "Yeniden Destek Ol (10 ₺)" else "10 ₺ Destek Ol (Google Play)",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+
+                                    if (!isSupporter) {
+                                        OutlinedButton(
+                                            onClick = onSimulateSupport,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.testTag("simulate_support_button")
+                                        ) {
+                                            Text("Test Et", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Oynatma & İndirme Ayarları",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GoogleBlue,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        // Default Speed
                         SettingItem(
                             icon = Icons.Default.Speed,
                             title = "Varsayılan Oynatma Hızı",
-                            subtitle = "1.0x (Normal Hız)"
+                            subtitle = "Tüm bölümler için standart hız ayarı",
+                            onClick = { showSpeedDialog = true }
                         )
+
+                        // Theme
+                        val themeTitle = when (appThemeMode) {
+                            1 -> "Açık Tema"
+                            2 -> "Koyu Tema (AMOLED)"
+                            else -> "Sistem Varsayılanı"
+                        }
                         SettingItem(
-                            icon = Icons.Default.Download,
-                            title = "Otomatik İndirme",
-                            subtitle = "Yalnızca Wi-Fi üzerinden yeni bölümleri indir"
+                            icon = Icons.Default.Palette,
+                            title = "Uygulama Teması",
+                            subtitle = themeTitle,
+                            onClick = { showThemeDialog = true }
                         )
+
+                        // Auto Download Toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, tint = GoogleBlue, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Otomatik Bölüm İndirme", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("Abone olduğunuz kanalların yeni bölümlerini otomatik kaydet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = autoDownload,
+                                onCheckedChange = { onToggleAutoDownload() },
+                                colors = SwitchDefaults.colors(checkedThumbColor = GoogleBlue)
+                            )
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 0.5.dp)
+
+                        // Wi-Fi Only Download Toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Wifi, contentDescription = null, tint = GoogleBlue, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Yalnızca Wi-Fi ile İndir", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("Mobil veri kullanımını engeller", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = wifiOnlyDownload,
+                                onCheckedChange = { onToggleWifiOnly() },
+                                colors = SwitchDefaults.colors(checkedThumbColor = GoogleBlue)
+                            )
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 0.5.dp)
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Depolama & Veri Yönetimi",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GoogleBlue,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        // Clear Downloads
                         SettingItem(
-                            icon = Icons.Default.ManageAccounts,
-                            title = "Hesap ve Gizlilik",
-                            subtitle = "Google Podcasts senkronizasyon protokolü"
+                            icon = Icons.Default.DeleteSweep,
+                            title = "İndirilen Bölümleri Temizle",
+                            subtitle = "Cihazınızdaki çevrimdışı önbelleği boşaltın",
+                            onClick = { showClearDownloadsDialog = true }
                         )
+
+                        // Clear History
+                        SettingItem(
+                            icon = Icons.Default.History,
+                            title = "Dinleme Geçmişini Sıfırla",
+                            subtitle = "Tüm dinleme kayıtlarını ve ilerlemeleri siler",
+                            onClick = { showClearHistoryDialog = true }
+                        )
+
+                        // App Info
                         SettingItem(
                             icon = Icons.Outlined.Info,
-                            title = "Uygulama Sürümü",
-                            subtitle = "iRadyo v1.0.0 (Google Podcast'ler Mimarisi)"
+                            title = "iRadyo Hakkında",
+                            subtitle = "Sürüm 3.0 • Google Podcasts Mimarisi • In-App Billing Aktif",
+                            onClick = {}
                         )
                     }
                 }
             }
         }
+    }
+
+    // Purchase Result Alert
+    purchaseMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = onClearPurchaseMessage,
+            title = { Text("iRadyo Destek", fontWeight = FontWeight.Bold) },
+            text = { Text(msg) },
+            confirmButton = {
+                TextButton(onClick = onClearPurchaseMessage) {
+                    Text("Harika!")
+                }
+            }
+        )
+    }
+
+    // Theme Selection Dialog
+    if (showThemeDialog) {
+        val themeOptions = listOf("Sistem Varsayılanı", "Açık Tema", "Koyu Tema (AMOLED)")
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = { Text("Tema Seçimi", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    themeOptions.forEachIndexed { index, name ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSetThemeMode(index)
+                                    showThemeDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = name, fontSize = 15.sp, fontWeight = if (appThemeMode == index) FontWeight.Bold else FontWeight.Normal)
+                            if (appThemeMode == index) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = GoogleBlue)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) { Text("Kapat") }
+            }
+        )
+    }
+
+    // Clear History Confirmation Dialog
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text("Geçmişi Temizle", fontWeight = FontWeight.Bold) },
+            text = { Text("Tüm dinleme geçmişiniz ve bölümlerdeki ilerlemeleriniz silinecektir. Emin misiniz?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearHistory()
+                        showClearHistoryDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Evet, Temizle", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) { Text("Vazgeç") }
+            }
+        )
+    }
+
+    // Clear Downloads Confirmation Dialog
+    if (showClearDownloadsDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDownloadsDialog = false },
+            title = { Text("İndirilenleri Sil", fontWeight = FontWeight.Bold) },
+            text = { Text("Cihazınızda çevrimdışı saklanan tüm podcast bölümleri silinecek ve depolama alanı boşaltılacaktır.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearDownloads()
+                        showClearDownloadsDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Sil", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDownloadsDialog = false }) { Text("Vazgeç") }
+            }
+        )
     }
 }
 
@@ -455,11 +780,13 @@ private fun StatItem(
 private fun SettingItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -22,8 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -55,6 +58,8 @@ fun ExploreScreen(
     selectedCategory: Category?,
     onSelectCategory: (Category?) -> Unit,
     podcasts: List<Podcast>,
+    searchQuery: String,
+    isSearchingOnline: Boolean,
     onPodcastClicked: (Podcast) -> Unit,
     onToggleSubscribe: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -69,81 +74,163 @@ fun ExploreScreen(
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text(
-                    text = "Podcast Keşfet",
+                    text = if (searchQuery.isNotBlank()) "Arama: $searchQuery" else "Podcast Keşfet",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Öne çıkan, popüler ve kategorilere göre yeni podcast'ler",
+                    text = if (searchQuery.isNotBlank())
+                        "İnternet üzerindeki gerçek podcast arşivinde arama sonuçları"
+                    else
+                        "Milyonlarca podcast arasında keşfe çıkın, dinleyin ve abone olun",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Category Filter Chips
-        item {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 12.dp)
-            ) {
-                // "Tümü" chip
-                item {
-                    FilterChip(
-                        selected = selectedCategory == null,
-                        onClick = { onSelectCategory(null) },
-                        label = { Text("Tüm Kategoriler") },
-                        leadingIcon = if (selectedCategory == null) {
-                            {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                        } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        modifier = Modifier.testTag("category_chip_all")
+        // Live Search Status
+        if (isSearchingOnline) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = GoogleBlue
                     )
-                }
-
-                items(categories, key = { it.id }) { cat ->
-                    val isSelected = selectedCategory?.id == cat.id
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            if (isSelected) onSelectCategory(null) else onSelectCategory(cat)
-                        },
-                        label = { Text(cat.name) },
-                        leadingIcon = if (isSelected) {
-                            {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                        } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        modifier = Modifier.testTag("category_chip_${cat.id}")
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "İnternet üzerindeki gerçek podcastler aranıyor...",
+                        fontSize = 13.sp,
+                        color = GoogleBlue,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
 
-        // Featured Podcasts (Öne Çıkanlar) - show if no category filter
-        if (selectedCategory == null) {
+        // Category Filter Chips
+        if (searchQuery.isBlank()) {
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    // "Tüm Kategoriler" chip
+                    item {
+                        FilterChip(
+                            selected = selectedCategory == null,
+                            onClick = { onSelectCategory(null) },
+                            label = { Text("Tüm Kategoriler") },
+                            leadingIcon = if (selectedCategory == null) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.testTag("category_chip_all")
+                        )
+                    }
+
+                    items(categories, key = { it.id }) { cat ->
+                        val isSelected = selectedCategory?.id == cat.id
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (isSelected) onSelectCategory(null) else onSelectCategory(cat)
+                            },
+                            label = { Text(cat.name) },
+                            leadingIcon = if (isSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.testTag("category_chip_${cat.id}")
+                        )
+                    }
+                }
+            }
+        }
+
+        // Search Results Section
+        if (searchQuery.isNotBlank()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = GoogleBlue, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Bulunan Yayınlar (${podcasts.size})",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            if (podcasts.isEmpty() && !isSearchingOnline) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "'$searchQuery' için podcast bulunamadı",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Farklı bir arama terimi deneyebilirsiniz.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                items(podcasts, key = { "search_${it.id}" }) { podcast ->
+                    TopChartItem(
+                        rank = null,
+                        podcast = podcast,
+                        onClick = { onPodcastClicked(podcast) },
+                        onSubscribe = { onToggleSubscribe(podcast.id) }
+                    )
+                }
+            }
+        } else if (selectedCategory == null) {
+            // Featured Podcasts (Öne Çıkanlar)
             item {
                 Text(
-                    text = "Öne Çıkan Podcast'ler",
+                    text = "Öne Çıkan Gerçek Podcast'ler",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -155,7 +242,7 @@ fun ExploreScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.padding(bottom = 16.dp)
                 ) {
-                    items(podcasts.take(4), key = { "featured_${it.id}" }) { podcast ->
+                    items(podcasts.take(5), key = { "featured_${it.id}" }) { podcast ->
                         PodcastCard(
                             podcast = podcast,
                             onPodcastClicked = { onPodcastClicked(podcast) },
@@ -199,7 +286,7 @@ fun ExploreScreen(
                 )
             }
         } else {
-            // Category Selected - Header
+            // Category Selected
             item {
                 Row(
                     modifier = Modifier
