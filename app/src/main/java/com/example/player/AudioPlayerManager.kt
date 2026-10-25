@@ -80,7 +80,14 @@ class AudioPlayerManager(
                 }
                 setDataSource(source)
                 setOnPreparedListener { mp ->
-                    _playerState.update { it.copy(isBuffering = false, isPlaying = true) }
+                    val actualDurSec = if (mp.duration > 0) mp.duration / 1000 else episode.durationSeconds
+                    _playerState.update {
+                        it.copy(
+                            isBuffering = false,
+                            isPlaying = true,
+                            durationSeconds = if (actualDurSec > 0) actualDurSec else it.durationSeconds
+                        )
+                    }
                     val startPosMs = (episode.playbackPositionSeconds * 1000).coerceAtLeast(0)
                     if (startPosMs > 0 && startPosMs < mp.duration) {
                         mp.seekTo(startPosMs)
@@ -88,7 +95,11 @@ class AudioPlayerManager(
                     applySpeed(_playerState.value.playbackSpeed)
                     mp.start()
                     startProgressTracker()
-                    MediaNotificationManager.showNotification(context, episode, true)
+                    val epWithAccurateDuration = if (actualDurSec > 0 && actualDurSec != episode.durationSeconds) {
+                        episode.copy(durationSeconds = actualDurSec)
+                    } else episode
+                    currentPlayingEpisode = epWithAccurateDuration
+                    MediaNotificationManager.showNotification(context, epWithAccurateDuration, true)
                 }
                 setOnCompletionListener {
                     handlePlaybackCompleted()

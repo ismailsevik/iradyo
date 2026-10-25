@@ -672,7 +672,7 @@ fun ProfileScreen(
                         SettingItem(
                             icon = Icons.Outlined.Info,
                             title = "iRadyo Hakkında",
-                            subtitle = "Sürüm 6.0 • Google Podcasts Mimarisi • Firebase & In-App Billing",
+                            subtitle = "Sürüm 9.0 • Google Podcasts Mimarisi • Bulut & Uygulama İçi Satın Alma",
                             onClick = {}
                         )
                     }
@@ -759,7 +759,7 @@ fun ProfileScreen(
             title = { Text("Hesap Bilgilerini ve Verilerini Sil", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
             text = {
                 Text(
-                    "Bu işlemle Google hesabınıza bağlı tüm kaydedilen podcastler, bölümler, favoriler ve dinleme geçmişiniz Firebase bulutundan ve cihazınızdan kalıcı olarak silinecektir.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?"
+                    "Bu işlemle Google hesabınıza bağlı tüm kaydedilen podcastler, bölümler, favoriler ve dinleme geçmişiniz bulut sunucularından ve cihazınızdan kalıcı olarak silinecektir.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?"
                 )
             },
             confirmButton = {

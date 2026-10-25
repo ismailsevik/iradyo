@@ -596,7 +596,13 @@ fun SleepTimerModal(
 }
 
 private fun formatTime(seconds: Int): String {
-    val mins = seconds / 60
-    val secs = seconds % 60
-    return String.format("%02d:%02d", mins, secs)
+    val totalSec = seconds.coerceAtLeast(0)
+    val hours = totalSec / 3600
+    val mins = (totalSec % 3600) / 60
+    val secs = totalSec % 60
+    return if (hours > 0) {
+        String.format(java.util.Locale.US, "%d:%02d:%02d", hours, mins, secs)
+    } else {
+        String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+    }
 }

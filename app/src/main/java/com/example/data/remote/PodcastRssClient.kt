@@ -102,9 +102,10 @@ object PodcastRssClient {
             var currentDesc = ""
             var currentAudioUrl = ""
             var currentPubDate = ""
-            var currentDuration = 1800 // default 30 min
+            var currentDuration = 0
 
-            while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < 30) {
+            // Show all episodes without arbitrary low limits (support up to 2000 episodes)
+            while (eventType != XmlPullParser.END_DOCUMENT && episodes.size < 2000) {
                 val tag = parser.name
                 when (eventType) {
                     XmlPullParser.START_TAG -> {
@@ -114,7 +115,7 @@ object PodcastRssClient {
                             currentDesc = ""
                             currentAudioUrl = ""
                             currentPubDate = ""
-                            currentDuration = 1800
+                            currentDuration = 0
                         } else if (inItem) {
                             when (tag.lowercase()) {
                                 "title" -> currentTitle = parser.nextText() ?: ""
@@ -169,7 +170,15 @@ object PodcastRssClient {
     }
 
     private fun cleanHtml(html: String): String {
-        return html.replace(Regex("<.*?>"), "").replace("&nbsp;", " ").replace("&amp;", "&").take(250)
+        return html
+            .replace(Regex("<[^>]*>"), "")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .trim()
     }
 
     private fun formatPubDate(pubDate: String): String {
@@ -184,19 +193,30 @@ object PodcastRssClient {
     }
 
     private fun parseDuration(duration: String): Int {
+        val clean = duration.trim()
+        if (clean.isBlank()) return 0
         return try {
-            if (duration.contains(":")) {
-                val parts = duration.split(":")
-                if (parts.size == 3) {
-                    parts[0].toInt() * 3600 + parts[1].toInt() * 60 + parts[2].toInt()
-                } else if (parts.size == 2) {
-                    parts[0].toInt() * 60 + parts[1].toInt()
-                } else 1800
+            if (clean.contains(":")) {
+                val parts = clean.split(":")
+                when (parts.size) {
+                    3 -> {
+                        val h = parts[0].trim().toIntOrNull() ?: 0
+                        val m = parts[1].trim().toIntOrNull() ?: 0
+                        val s = parts[2].trim().split(".")[0].toIntOrNull() ?: 0
+                        h * 3600 + m * 60 + s
+                    }
+                    2 -> {
+                        val m = parts[0].trim().toIntOrNull() ?: 0
+                        val s = parts[1].trim().split(".")[0].toIntOrNull() ?: 0
+                        m * 60 + s
+                    }
+                    else -> 0
+                }
             } else {
-                duration.toIntOrNull() ?: 1800
+                clean.split(".")[0].trim().toIntOrNull() ?: 0
             }
         } catch (_: Exception) {
-            1800
+            0
         }
     }
 }

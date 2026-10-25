@@ -38,23 +38,19 @@ class PodcastRepository(private val database: AppDatabase) {
     init {
         CoroutineScope(Dispatchers.IO).launch {
             cleanupStaleDefaultData()
-            seedCleanCatalogIfEmpty()
             loadActiveUser()
         }
     }
 
     private suspend fun cleanupStaleDefaultData() {
-        // Remove legacy hardcoded fake user and clean predetermined subscriptions
+        // Clean predetermined sample podcasts, dummy users, and fake records
         try {
             userDao.deleteUserById("user_ismail")
             userDao.clearHistory("user_ismail")
-            userDao.removeFavorite("user_ismail", "pod_1")
-            userDao.removeFavorite("user_ismail", "pod_2")
-            userDao.removeFavorite("user_ismail", "pod_4")
-            userDao.removeFavorite("user_ismail", "pod_5")
-            userDao.removeFavorite("user_ismail", "pod_8")
             listOf("pod_1", "pod_2", "pod_3", "pod_4", "pod_5", "pod_6", "pod_7", "pod_8").forEach { id ->
-                podcastDao.updateSubscription(id, false)
+                podcastDao.deletePodcastById(id)
+                podcastDao.deleteEpisodesByPodcastId(id)
+                userDao.removeFavorite("user_ismail", id)
             }
         } catch (_: Exception) {}
     }
@@ -179,22 +175,34 @@ class PodcastRepository(private val database: AppDatabase) {
         podcastDao.updateQueueStatus(episodeId, newQueue)
     }
 
-    suspend fun toggleRealDownload(context: Context, episodeId: String): Boolean = withContext(Dispatchers.IO) {
-        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext false
-        val domainEp = episode.toDomain()
+    suspend fun toggleRealDownload(context: Context, episode: Episode): Boolean = withContext(Dispatchers.IO) {
+        val existing = podcastDao.getEpisodeById(episode.id)
+        if (existing == null) {
+            podcastDao.insertEpisodes(listOf(episode.toEntity()))
+        }
+        val isDownloaded = existing?.isDownloaded == true || PodcastDownloadHelper.isDownloadedLocally(context, episode.id)
 
-        if (episode.isDownloaded || PodcastDownloadHelper.isDownloadedLocally(context, episodeId)) {
-            // Delete downloaded file
-            PodcastDownloadHelper.deleteDownloadedEpisode(context, episodeId)
-            podcastDao.updateDownloadStatus(episodeId, false)
+        if (isDownloaded) {
+            PodcastDownloadHelper.deleteDownloadedEpisode(context, episode.id)
+            podcastDao.updateDownloadStatus(episode.id, false)
             return@withContext false
         } else {
-            // Truly download the MP3
-            val success = PodcastDownloadHelper.downloadEpisode(context, domainEp)
+            val success = PodcastDownloadHelper.downloadEpisode(context, episode)
             if (success) {
-                podcastDao.updateDownloadStatus(episodeId, true)
+                podcastDao.updateDownloadStatus(episode.id, true)
             }
             return@withContext success
+        }
+    }
+
+    suspend fun toggleRealDownload(context: Context, episodeId: String): Boolean = withContext(Dispatchers.IO) {
+        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext false
+        toggleRealDownload(context, episode.toDomain())
+    }
+
+    suspend fun updateEpisodeDuration(episodeId: String, duration: Int) = withContext(Dispatchers.IO) {
+        if (duration > 0) {
+            podcastDao.updateEpisodeDuration(episodeId, duration)
         }
     }
 
@@ -358,189 +366,6 @@ class PodcastRepository(private val database: AppDatabase) {
                 totalListeningMinutes = it.totalListeningMinutes
             )
         }
-    }
-
-    private suspend fun seedCleanCatalogIfEmpty() {
-        val existing = podcastDao.getAllPodcasts().first()
-        if (existing.isNotEmpty()) return
-
-        // Seed clean Turkish podcasts without any pre-set user state (no pre-subscriptions, no fake progress, no fake downloads)
-        val cleanPodcasts = listOf(
-            PodcastEntity(
-                id = "pod_1",
-                title = "Fularsız Entellik",
-                author = "İmmanuel Tolstoyevski",
-                description = "Halk için halka rağmen entellik. Felsefe, bilim, bilişsel yanılgılar ve popüler kültür üzerine derin ve esprili sohbetler. RSS: https://feeds.megaphone.fm/PM5261345791",
-                imageUrl = "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&auto=format&fit=crop&q=80",
-                category = "Bilim ve Keşif",
-                totalEpisodes = 264,
-                subscriberCount = 84000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.9
-            ),
-            PodcastEntity(
-                id = "pod_2",
-                title = "TeknoSeyir Haftalık Gündem",
-                author = "Murat Gamsız & Levent Pekcan",
-                description = "Bilişim dünyasında haftanın öne çıkan gelişmeleri, donanım, yazılım, yapay zeka ve internet dünyası değerlendirmeleri. RSS: https://teknoseyir.com/feed/podcast",
-                imageUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
-                category = "Teknoloji",
-                totalEpisodes = 620,
-                subscriberCount = 145000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.8
-            ),
-            PodcastEntity(
-                id = "pod_3",
-                title = "Nasıl Olunur?",
-                author = "Nilay Örnek",
-                description = "Mesleklerini ustalıkla icra eden insanlarla 'nasıl olunur' sorusuna yanıt arayan derinlikli röportaj serisi.",
-                imageUrl = "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=600&auto=format&fit=crop&q=80",
-                category = "Kültür ve Sanat",
-                totalEpisodes = 175,
-                subscriberCount = 112000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.9
-            ),
-            PodcastEntity(
-                id = "pod_4",
-                title = "Evrim Ağacı Podcast",
-                author = "Çağrı Mert Bakırcı",
-                description = "Evrim, biyoloji, astrofizik ve modern bilimin en çarpıcı konuları üzerine akademik ve popüler bilim anlatısı. RSS: https://media.rss.com/evrimagaci/feed.xml",
-                imageUrl = "https://images.unsplash.com/photo-1507668077129-56e32842fceb?w=600&auto=format&fit=crop&q=80",
-                category = "Bilim ve Keşif",
-                totalEpisodes = 120,
-                subscriberCount = 168000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 5.0
-            ),
-            PodcastEntity(
-                id = "pod_5",
-                title = "Meksika Açmazı",
-                author = "Mesut Süre, Fazlı Polat & Anlatanadam",
-                description = "Çıkmaza giren durumlar, ahlaki ikilemler ve kahkaha dolu absürt tartışmalar.",
-                imageUrl = "https://images.unsplash.com/photo-1589903102059-29179f977d07?w=600&auto=format&fit=crop&q=80",
-                category = "Komedi & Mizah",
-                totalEpisodes = 130,
-                subscriberCount = 189000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.9
-            ),
-            PodcastEntity(
-                id = "pod_6",
-                title = "Girişimci Muhabbeti",
-                author = "Sami Bugay & Barış Koçdur",
-                description = "Start-up ekosistemi, teknoloji yatırımları, ürün geliştirme ve küresel ölçeklenme stratejileri.",
-                imageUrl = "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=80",
-                category = "İş ve Girişim",
-                totalEpisodes = 88,
-                subscriberCount = 42000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.6
-            ),
-            PodcastEntity(
-                id = "pod_7",
-                title = "Tarihin Arka Odası & Mitoloji",
-                author = "Doç. Dr. Emrah Safa Gürkan",
-                description = "Tarihi klişeleri yıkan, belgeler ve analitik bakış açısıyla geçmişin sırlarını aydınlatan keyifli anlatım.",
-                imageUrl = "https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&auto=format&fit=crop&q=80",
-                category = "Tarih & Belgesel",
-                totalEpisodes = 74,
-                subscriberCount = 95000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.8
-            ),
-            PodcastEntity(
-                id = "pod_8",
-                title = "iRadyo Canlı Müzik & Akustik",
-                author = "iRadyo Stüdyosu",
-                description = "7/24 Kesintisiz yüksek kaliteli canlı internet radyo yayını, caz ve akustik müzik akışı.",
-                imageUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80",
-                category = "Canlı iRadyo",
-                totalEpisodes = 20,
-                subscriberCount = 38000,
-                isSubscribed = false,
-                isFavorited = false,
-                rating = 4.9
-            )
-        )
-        podcastDao.insertPodcasts(cleanPodcasts)
-
-        // Seed a few starter real episodes with 0 play progress, 0 download, 0 favorites
-        val cleanEpisodes = listOf(
-            EpisodeEntity(
-                id = "ep_1_1",
-                podcastId = "pod_1",
-                podcastTitle = "Fularsız Entellik",
-                podcastImageUrl = "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&auto=format&fit=crop&q=80",
-                title = "Popülizm: Halkçılık ve Son 100 Sene",
-                description = "Halk iradesi kavramının evrimi, modern siyaset sahnesi ve felsefi kökler.",
-                audioUrl = "https://traffic.megaphone.fm/PM8756052206.mp3",
-                durationSeconds = 2460,
-                releaseDate = "Yeni",
-                isPlayed = false,
-                playbackPositionSeconds = 0,
-                isDownloaded = false,
-                isFavorited = false,
-                isInQueue = false
-            ),
-            EpisodeEntity(
-                id = "ep_1_2",
-                podcastId = "pod_1",
-                podcastTitle = "Fularsız Entellik",
-                podcastImageUrl = "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&auto=format&fit=crop&q=80",
-                title = "Büyük Resim: Müesses Nizamın İntiharı ve YZ Ekonomisi",
-                description = "Yapay zeka devrimi, iş gücü dönüşümü ve küresel sermayenin yeni dinamikleri.",
-                audioUrl = "https://traffic.megaphone.fm/PM2133641833.mp3",
-                durationSeconds = 2880,
-                releaseDate = "12 Eki",
-                isPlayed = false,
-                playbackPositionSeconds = 0,
-                isDownloaded = false,
-                isFavorited = false,
-                isInQueue = false
-            ),
-            EpisodeEntity(
-                id = "ep_4_1",
-                podcastId = "pod_4",
-                podcastTitle = "Evrim Ağacı Podcast",
-                podcastImageUrl = "https://images.unsplash.com/photo-1507668077129-56e32842fceb?w=600&auto=format&fit=crop&q=80",
-                title = "Evrenin Doğumu: Büyük Patlama'dan İlk Yıldızlara",
-                description = "Kozmolojik enflasyon, kuantum dalgalanmaları ve evrenin ilk 300 bin yılında neler oldu?",
-                audioUrl = "https://traffic.megaphone.fm/PM8756052206.mp3",
-                durationSeconds = 1920,
-                releaseDate = "Bu Hafta",
-                isPlayed = false,
-                playbackPositionSeconds = 0,
-                isDownloaded = false,
-                isFavorited = false,
-                isInQueue = false
-            ),
-            EpisodeEntity(
-                id = "ep_8_1",
-                podcastId = "pod_8",
-                podcastTitle = "iRadyo Canlı Müzik & Akustik",
-                podcastImageUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80",
-                title = "7/24 Kesintisiz Canlı Yayın: Caz & Akustik Akış",
-                description = "Yüksek kaliteli canlı radyo yayını. Kesintisiz akustik ve caz parçalar.",
-                audioUrl = "https://stream.radioparadise.com/mp3-128",
-                durationSeconds = 7200,
-                releaseDate = "Canlı Yayın",
-                isPlayed = false,
-                playbackPositionSeconds = 0,
-                isDownloaded = false,
-                isFavorited = false,
-                isInQueue = false
-            )
-        )
-        podcastDao.insertEpisodes(cleanEpisodes)
     }
 
     private fun PodcastEntity.toDomain() = Podcast(

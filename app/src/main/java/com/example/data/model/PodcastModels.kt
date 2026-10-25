@@ -7,8 +7,8 @@ data class Podcast(
     val description: String,
     val imageUrl: String,
     val category: String,
-    val totalEpisodes: Int = 12,
-    val subscriberCount: Int = 12000,
+    val totalEpisodes: Int = 0,
+    val subscriberCount: Int = 0,
     val isSubscribed: Boolean = false,
     val isFavorited: Boolean = false,
     val rating: Double = 4.8
@@ -32,22 +32,24 @@ data class Episode(
 ) {
     val durationFormatted: String
         get() {
-            val mins = durationSeconds / 60
+            if (durationSeconds <= 0) return "--:--"
+            val hours = durationSeconds / 3600
+            val mins = (durationSeconds % 3600) / 60
             val secs = durationSeconds % 60
-            return if (mins >= 60) {
-                val hours = mins / 60
-                val remMins = mins % 60
-                "${hours} sa ${remMins} dk"
-            } else {
-                "${mins} dk"
+            return when {
+                hours > 0 -> if (mins > 0) "${hours} sa ${mins} dk" else "${hours} sa"
+                mins > 0 -> "${mins} dk"
+                else -> "${secs} sn"
             }
         }
 
     val remainingFormatted: String
         get() {
             val remaining = (durationSeconds - playbackPositionSeconds).coerceAtLeast(0)
-            val mins = remaining / 60
-            return if (mins > 0) "${mins} dk kaldı" else "Tamamlandı"
+            if (remaining <= 0) return "Tamamlandı"
+            val hours = remaining / 3600
+            val mins = (remaining % 3600) / 60
+            return if (hours > 0) "${hours} sa ${mins} dk kaldı" else "${mins} dk kaldı"
         }
 }
 
@@ -58,7 +60,7 @@ data class UserProfile(
     val fullName: String,
     val avatarColorHex: String = "#1A73E8",
     val createdAt: Long = System.currentTimeMillis(),
-    val totalListeningMinutes: Int = 184
+    val totalListeningMinutes: Int = 0
 )
 
 data class Category(

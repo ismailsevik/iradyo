@@ -144,4 +144,54 @@ object MediaNotificationManager {
             manager.cancel(NOTIFICATION_ID)
         } catch (_: Exception) {}
     }
+
+    fun showNewEpisodeNotification(context: Context, podcastTitle: String, episodeTitle: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+        }
+        val channelId = "iradyo_new_episodes_channel"
+        val channelName = "Yeni Podcast Yayınları"
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                channelName,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Abone olduğunuz podcastlerde yeni bölüm yayınlandığında anlık bildirim"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentTitle("Yeni Bölüm: $podcastTitle")
+            .setContentText(episodeTitle)
+            .setSubText("iRadyo Yeni Yayın")
+            .setContentIntent(contentPendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        try {
+            manager.notify((System.currentTimeMillis() % 100000).toInt(), builder.build())
+        } catch (_: Exception) {}
+    }
 }

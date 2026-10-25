@@ -105,7 +105,7 @@ fun AuthDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         GoogleWaveformLogo(modifier = Modifier.padding(end = 8.dp))
                         Text(
-                            text = "iRadyo & Firebase",
+                            text = "iRadyo Bulut Senkronizasyon",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -126,7 +126,7 @@ fun AuthDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Firebase Google Sign In Button
+                // Google Sign In Button
                 if (firebaseUser == null) {
                     Surface(
                         shape = RoundedCornerShape(24.dp),
@@ -157,7 +157,7 @@ fun AuthDialog(
                             } else {
                                 GoogleWaveformLogo(modifier = Modifier.padding(end = 10.dp))
                                 Text(
-                                    text = "Google ile Giriş Yap (Firebase)",
+                                    text = "Google Hesabı ile Giriş Yap",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -166,7 +166,7 @@ fun AuthDialog(
                         }
                     }
                 } else {
-                    // Firebase Signed In Banner
+                    // Signed In Banner
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
@@ -187,7 +187,7 @@ fun AuthDialog(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Firebase Bulut Aktif",
+                                    text = "Bulut Senkronizasyon Aktif",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer

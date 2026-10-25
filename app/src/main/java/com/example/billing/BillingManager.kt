@@ -28,7 +28,7 @@ class BillingManager(
     private val scope = CoroutineScope(Dispatchers.IO)
     private var billingClient: BillingClient? = null
 
-    val productId = "support_dev_10tl"
+    val productId = "destek"
 
     private val _isSupporter = MutableStateFlow(false)
     val isSupporter: StateFlow<Boolean> = _isSupporter.asStateFlow()
@@ -81,7 +81,11 @@ class BillingManager(
     private fun querySupportProduct() {
         val productList = listOf(
             QueryProductDetailsParams.Product.newBuilder()
-                .setProductId(productId)
+                .setProductId("destek")
+                .setProductType(BillingClient.ProductType.INAPP)
+                .build(),
+            QueryProductDetailsParams.Product.newBuilder()
+                .setProductId("support_dev_10tl")
                 .setProductType(BillingClient.ProductType.INAPP)
                 .build()
         )
