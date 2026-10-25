@@ -21,19 +21,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,6 +83,8 @@ fun PodcastDetailScreen(
 ) {
     BackHandler { onBack() }
     var isDescriptionExpanded by remember { mutableStateOf(false) }
+    var episodeSearchQuery by remember { mutableStateOf("") }
+    var isNewestFirst by remember { mutableStateOf(true) } // true: Yeniden Eskiye, false: Eskiden Yeniye
 
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -253,37 +261,127 @@ fun PodcastDetailScreen(
                 }
             }
 
-            // Episode List Header
+            // Episode Search and Sort Controls
             item {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Text(
-                        text = "Bölümler (${episodes.size})",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                    // Search in episodes
+                    OutlinedTextField(
+                        value = episodeSearchQuery,
+                        onValueChange = { episodeSearchQuery = it },
+                        placeholder = { Text("Bölümlerde ara...", fontSize = 13.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = GoogleBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (episodeSearchQuery.isNotBlank()) {
+                                IconButton(onClick = { episodeSearchQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoogleBlue,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("episode_search_field")
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Sort Order & Episode Count Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Bölümler",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // Sort toggle button
+                        FilterChip(
+                            selected = true,
+                            onClick = { isNewestFirst = !isNewestFirst },
+                            label = {
+                                Text(
+                                    text = if (isNewestFirst) "Sırala: Yeniden Eskiye" else "Sırala: Eskiden Yeniye",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (isNewestFirst) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = GoogleBlue.copy(alpha = 0.12f),
+                                selectedLabelColor = GoogleBlue,
+                                selectedLeadingIconColor = GoogleBlue
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.testTag("sort_episodes_button")
+                        )
+                    }
                 }
             }
 
-            // Episodes
+            // Episodes list with search and sorting applied
             val podcastEpisodes = episodes.filter { it.podcastId == podcast.id }
-            if (podcastEpisodes.isEmpty()) {
+            val searchedEpisodes = if (episodeSearchQuery.isBlank()) {
+                podcastEpisodes
+            } else {
+                podcastEpisodes.filter {
+                    it.title.contains(episodeSearchQuery, ignoreCase = true) ||
+                            it.description.contains(episodeSearchQuery, ignoreCase = true)
+                }
+            }
+
+            // Sort: Yeniden Eskiye (newest first) vs Eskiden Yeniye (oldest first)
+            val sortedEpisodes = if (isNewestFirst) {
+                searchedEpisodes
+            } else {
+                searchedEpisodes.reversed()
+            }
+
+            if (sortedEpisodes.isEmpty()) {
                 item {
                     Text(
-                        text = "Bu podcast için henüz bölüm bulunmuyor.",
+                        text = if (episodeSearchQuery.isNotBlank())
+                            "\"$episodeSearchQuery\" aramasına uygun bölüm bulunamadı."
+                        else
+                            "Bu podcast için henüz bölüm bulunmuyor.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)
                     )
                 }
             } else {
-                items(podcastEpisodes, key = { it.id }) { episode ->
+                items(sortedEpisodes, key = { it.id }) { episode ->
                     EpisodeCard(
                         episode = episode,
                         isPlaying = isPlaying && currentPlayingEpisodeId == episode.id,

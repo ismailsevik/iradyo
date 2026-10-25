@@ -167,6 +167,35 @@ class FirebaseSyncRepository(private val context: Context) {
         }
     }
 
+    suspend fun syncSavedEpisodeToCloud(episode: Episode, isSaved: Boolean) = withContext(Dispatchers.IO) {
+        val uid = auth.currentUser?.uid ?: return@withContext
+        try {
+            val epDoc = firestore.collection("users").document(uid)
+                .collection("saved_episodes").document(episode.id)
+
+            if (isSaved) {
+                val data = mapOf(
+                    "episodeId" to episode.id,
+                    "podcastId" to episode.podcastId,
+                    "podcastTitle" to episode.podcastTitle,
+                    "podcastImageUrl" to episode.podcastImageUrl,
+                    "title" to episode.title,
+                    "description" to episode.description,
+                    "audioUrl" to episode.audioUrl,
+                    "durationSeconds" to episode.durationSeconds,
+                    "releaseDate" to episode.releaseDate,
+                    "savedAt" to FieldValue.serverTimestamp()
+                )
+                epDoc.set(data, SetOptions.merge()).await()
+            } else {
+                epDoc.delete().await()
+            }
+            _lastSyncTimestamp.value = System.currentTimeMillis()
+        } catch (e: Exception) {
+            Log.e("FirebaseSync", "Error saving episode to Firestore", e)
+        }
+    }
+
     suspend fun fetchCloudFavorites(): List<String> = withContext(Dispatchers.IO) {
         val uid = auth.currentUser?.uid ?: return@withContext emptyList()
         try {
@@ -188,6 +217,85 @@ class FirebaseSyncRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e("FirebaseSync", "Error fetching cloud subscriptions", e)
             emptyList()
+        }
+    }
+
+    suspend fun fetchCloudSavedEpisodes(): List<Episode> = withContext(Dispatchers.IO) {
+        val uid = auth.currentUser?.uid ?: return@withContext emptyList()
+        try {
+            val snapshot = firestore.collection("users").document(uid)
+                .collection("saved_episodes").get().await()
+            snapshot.documents.mapNotNull { doc ->
+                val epId = doc.getString("episodeId") ?: doc.id
+                val podId = doc.getString("podcastId") ?: ""
+                val podTitle = doc.getString("podcastTitle") ?: ""
+                val podImg = doc.getString("podcastImageUrl") ?: ""
+                val title = doc.getString("title") ?: ""
+                val desc = doc.getString("description") ?: ""
+                val audio = doc.getString("audioUrl") ?: ""
+                val duration = doc.getLong("durationSeconds")?.toInt() ?: 1800
+                val release = doc.getString("releaseDate") ?: "Kayıtlı"
+
+                if (title.isNotBlank()) {
+                    Episode(
+                        id = epId,
+                        podcastId = podId,
+                        podcastTitle = podTitle,
+                        podcastImageUrl = podImg,
+                        title = title,
+                        description = desc,
+                        audioUrl = audio,
+                        durationSeconds = duration,
+                        releaseDate = release,
+                        isFavorited = true
+                    )
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.e("FirebaseSync", "Error fetching cloud saved episodes", e)
+            emptyList()
+        }
+    }
+
+    suspend fun deleteAllUserDataFromCloud(): Boolean = withContext(Dispatchers.IO) {
+        val user = auth.currentUser ?: return@withContext true
+        val uid = user.uid
+        try {
+            val userDoc = firestore.collection("users").document(uid)
+
+            val subcollections = listOf("favorites", "subscriptions", "history", "saved_episodes")
+            for (sub in subcollections) {
+                try {
+                    val docs = userDoc.collection(sub).get().await()
+                    for (doc in docs) {
+                        doc.reference.delete().await()
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirebaseSync", "Could not delete subcollection $sub: ${e.message}")
+                }
+            }
+
+            try {
+                userDoc.delete().await()
+            } catch (e: Exception) {
+                Log.w("FirebaseSync", "Could not delete user root doc: ${e.message}")
+            }
+
+            try {
+                user.delete().await()
+            } catch (e: Exception) {
+                Log.w("FirebaseSync", "Firebase user delete requires recent login or failed: ${e.message}")
+            }
+
+            auth.signOut()
+            _firebaseUser.value = null
+            _lastSyncTimestamp.value = null
+            true
+        } catch (e: Exception) {
+            Log.e("FirebaseSync", "Error deleting cloud account data", e)
+            auth.signOut()
+            _firebaseUser.value = null
+            false
         }
     }
 }

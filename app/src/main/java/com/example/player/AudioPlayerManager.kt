@@ -34,6 +34,10 @@ class AudioPlayerManager(
     private var currentPlayingEpisode: Episode? = null
     private var queueEpisodes: List<Episode> = emptyList()
 
+    init {
+        MediaNotificationManager.playerManagerRef = this
+    }
+
     fun updateQueue(episodes: List<Episode>) {
         queueEpisodes = episodes
     }
@@ -68,7 +72,13 @@ class AudioPlayerManager(
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 )
-                setDataSource(episode.audioUrl)
+                val localFile = com.example.util.PodcastDownloadHelper.getLocalAudioFile(context, episode.id)
+                val source = if (localFile.exists() && localFile.length() > 1024L) {
+                    localFile.absolutePath
+                } else {
+                    episode.audioUrl
+                }
+                setDataSource(source)
                 setOnPreparedListener { mp ->
                     _playerState.update { it.copy(isBuffering = false, isPlaying = true) }
                     val startPosMs = (episode.playbackPositionSeconds * 1000).coerceAtLeast(0)
@@ -78,6 +88,7 @@ class AudioPlayerManager(
                     applySpeed(_playerState.value.playbackSpeed)
                     mp.start()
                     startProgressTracker()
+                    MediaNotificationManager.showNotification(context, episode, true)
                 }
                 setOnCompletionListener {
                     handlePlaybackCompleted()
@@ -85,6 +96,7 @@ class AudioPlayerManager(
                 setOnErrorListener { _, what, extra ->
                     Log.e("AudioPlayer", "Error during playback: what=$what extra=$extra")
                     _playerState.update { it.copy(isBuffering = false, isPlaying = false) }
+                    MediaNotificationManager.cancelNotification(context)
                     true
                 }
                 prepareAsync()
@@ -92,6 +104,7 @@ class AudioPlayerManager(
         } catch (e: Exception) {
             Log.e("AudioPlayer", "Failed to start media player", e)
             _playerState.update { it.copy(isBuffering = false, isPlaying = false) }
+            MediaNotificationManager.cancelNotification(context)
         }
     }
 
@@ -112,7 +125,13 @@ class AudioPlayerManager(
         _playerState.update { it.copy(isPlaying = false) }
         currentPlayingEpisode?.let { ep ->
             onProgressUpdate(ep.id, _playerState.value.currentPositionSeconds, false)
+            MediaNotificationManager.showNotification(context, ep, false)
         }
+    }
+
+    fun pauseAndDismiss() {
+        pause()
+        MediaNotificationManager.cancelNotification(context)
     }
 
     fun resume() {
@@ -120,6 +139,9 @@ class AudioPlayerManager(
             it.start()
             _playerState.update { it.copy(isPlaying = true) }
             startProgressTracker()
+            currentPlayingEpisode?.let { ep ->
+                MediaNotificationManager.showNotification(context, ep, true)
+            }
         } ?: run {
             currentPlayingEpisode?.let { playEpisode(it) }
         }
@@ -223,6 +245,7 @@ class AudioPlayerManager(
     fun release() {
         progressJob?.cancel()
         sleepTimerJob?.cancel()
+        MediaNotificationManager.cancelNotification(context)
         releasePlayer()
     }
 

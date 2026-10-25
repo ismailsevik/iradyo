@@ -60,7 +60,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedTab = MutableStateFlow(0) // 0: Home, 1: Explore, 2: Activity, 3: Profile
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    private val _activitySubTab = MutableStateFlow(0) // 0: Queue, 1: Downloads, 2: History, 3: Subscriptions
+    private val _activitySubTab = MutableStateFlow(0) // 0: Queue, 1: Downloads, 2: Favorites, 3: History, 4: Subscriptions
     val activitySubTab: StateFlow<Int> = _activitySubTab.asStateFlow()
 
     private val _homeFilterChip = MutableStateFlow(0) // 0: All, 1: Downloaded, 2: In progress
@@ -121,6 +121,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val favoritePodcasts: StateFlow<List<Podcast>> = repository.getFavoritePodcastsForCurrentUser()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val favoriteEpisodes: StateFlow<List<Episode>> = repository.getFavoriteEpisodes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val listeningHistory: StateFlow<List<Episode>> = repository.getListeningHistoryForCurrentUser()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -134,6 +137,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 playerManager.updateQueue(queue)
             }
         }
+
+        // When Firebase user state changes, sync to repository
+        viewModelScope.launch {
+            firebaseUser.collect { fbUser ->
+                if (fbUser != null) {
+                    val email = fbUser.email ?: ""
+                    val name = fbUser.displayName ?: "Google Kullanıcısı"
+                    repository.setFirebaseUser(fbUser.uid, email, name)
+                    restoreCloudData()
+                }
+            }
+        }
+    }
+
+    private fun restoreCloudData() {
+        viewModelScope.launch {
+            val cloudFavs = firebaseSync.fetchCloudFavorites()
+            cloudFavs.forEach { podId ->
+                repository.toggleFavoritePodcast(podId)
+            }
+            val cloudSubs = firebaseSync.fetchCloudSubscriptions()
+            cloudSubs.forEach { podId ->
+                repository.toggleSubscription(podId)
+            }
+            val cloudSavedEpisodes = firebaseSync.fetchCloudSavedEpisodes()
+            if (cloudSavedEpisodes.isNotEmpty()) {
+                cloudSavedEpisodes.forEach { ep ->
+                    repository.toggleEpisodeFavorite(ep.id)
+                }
+            }
+        }
     }
 
     // Filtered explore podcasts combining local and online live search
@@ -144,7 +178,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         selectedCategory
     ) { localPodcasts, onlineList, query, category ->
         if (query.isNotBlank() && onlineList.isNotEmpty()) {
-            val combined = (onlineList + localPodcasts).distinctBy { it.id }
+            val localMap = localPodcasts.associateBy { it.id }
+            val mergedOnline = onlineList.map { onlinePod ->
+                localMap[onlinePod.id]?.let { localPod ->
+                    onlinePod.copy(isSubscribed = localPod.isSubscribed, isFavorited = localPod.isFavorited)
+                } ?: onlinePod
+            }
+            val combined = (mergedOnline + localPodcasts).distinctBy { it.id }
             if (category != null) {
                 combined.filter { it.category.contains(category.name, ignoreCase = true) }
             } else combined
@@ -207,7 +247,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openPodcastDetail(podcast: Podcast) {
         _selectedPodcastDetail.value = podcast
-        // If it has RSS URL or needs fresh episodes, fetch them in background!
+        // Fetch online episodes if feedUrl is available
         val feedUrl = extractFeedUrl(podcast.description)
         if (feedUrl.isNotBlank()) {
             viewModelScope.launch {
@@ -304,7 +344,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearDownloadedEpisodes() {
         viewModelScope.launch {
-            repository.clearDownloads()
+            repository.clearDownloads(getApplication())
         }
     }
 
@@ -329,9 +369,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             if (podcast != null) {
                 repository.savePodcast(podcast)
-                repository.toggleSubscription(podcastId)
-                val newSub = !podcast.isSubscribed
+                val newSub = repository.toggleSubscription(podcastId)
                 firebaseSync.syncSubscriptionToCloud(podcast, newSub)
+
+                _onlineSearchResults.value = _onlineSearchResults.value.map {
+                    if (it.id == podcastId) it.copy(isSubscribed = newSub) else it
+                }
 
                 _selectedPodcastDetail.value?.let { current ->
                     if (current.id == podcastId) {
@@ -349,8 +392,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             if (podcast != null) {
                 repository.savePodcast(podcast)
-                repository.toggleFavoritePodcast(podcastId)
-                val newFav = !podcast.isFavorited
+                val newFav = repository.toggleFavoritePodcast(podcastId)
                 firebaseSync.syncFavoriteToCloud(podcast, newFav)
 
                 _selectedPodcastDetail.value?.let { current ->
@@ -364,7 +406,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleFavoriteEpisode(episodeId: String) {
         viewModelScope.launch {
-            repository.toggleEpisodeFavorite(episodeId)
+            val updated = repository.toggleEpisodeFavorite(episodeId)
+            if (updated != null) {
+                // Save/Sync to Google Account in Firestore
+                firebaseSync.syncSavedEpisodeToCloud(updated, updated.isFavorited)
+            }
         }
     }
 
@@ -376,7 +422,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleDownload(episodeId: String) {
         viewModelScope.launch {
-            repository.toggleDownload(episodeId)
+            repository.toggleRealDownload(getApplication(), episodeId)
         }
     }
 
@@ -414,7 +460,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 firebaseSync.firebaseUser.value?.let { fbUser ->
                     val email = fbUser.email ?: "google@iradyo.app"
                     val name = fbUser.displayName ?: "Google Kullanıcısı"
-                    repository.registerUser(email.substringBefore("@"), email, name, "")
+                    repository.setFirebaseUser(fbUser.uid, email, name)
+                    restoreCloudData()
                 }
                 hideAuthDialog()
             }
@@ -423,7 +470,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOutFirebase() {
-        firebaseSync.signOut()
+        viewModelScope.launch {
+            firebaseSync.signOut()
+            repository.clearCurrentUser()
+        }
+    }
+
+    // Delete Account, Cloud Data, and Local User Data
+    fun deleteAccountAndAllData(onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val cloudSuccess = firebaseSync.deleteAllUserDataFromCloud()
+            repository.clearAllUserAndDefaultData(getApplication())
+            onComplete(cloudSuccess)
+        }
     }
 
     override fun onCleared() {

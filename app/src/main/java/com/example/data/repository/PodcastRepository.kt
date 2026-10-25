@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import android.content.Context
 import com.example.data.local.AppDatabase
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.FavoriteEntity
@@ -11,6 +12,7 @@ import com.example.data.model.Episode
 import com.example.data.model.Podcast
 import com.example.data.model.UserProfile
 import com.example.data.remote.PodcastRssClient
+import com.example.util.PodcastDownloadHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,7 +29,7 @@ class PodcastRepository(private val database: AppDatabase) {
     private val podcastDao = database.podcastDao()
     private val userDao = database.userDao()
 
-    private val _currentUserId = MutableStateFlow("user_ismail")
+    private val _currentUserId = MutableStateFlow("")
     val currentUserId: StateFlow<String> = _currentUserId.asStateFlow()
 
     private val _currentUser = MutableStateFlow<UserProfile?>(null)
@@ -35,13 +37,35 @@ class PodcastRepository(private val database: AppDatabase) {
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
-            seedDatabaseIfEmpty()
-            loadInitialUser()
+            cleanupStaleDefaultData()
+            seedCleanCatalogIfEmpty()
+            loadActiveUser()
         }
     }
 
-    private suspend fun loadInitialUser() {
-        val user = userDao.getUserById(_currentUserId.value)
+    private suspend fun cleanupStaleDefaultData() {
+        // Remove legacy hardcoded fake user and clean predetermined subscriptions
+        try {
+            userDao.deleteUserById("user_ismail")
+            userDao.clearHistory("user_ismail")
+            userDao.removeFavorite("user_ismail", "pod_1")
+            userDao.removeFavorite("user_ismail", "pod_2")
+            userDao.removeFavorite("user_ismail", "pod_4")
+            userDao.removeFavorite("user_ismail", "pod_5")
+            userDao.removeFavorite("user_ismail", "pod_8")
+            listOf("pod_1", "pod_2", "pod_3", "pod_4", "pod_5", "pod_6", "pod_7", "pod_8").forEach { id ->
+                podcastDao.updateSubscription(id, false)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun loadActiveUser() {
+        val uid = _currentUserId.value
+        if (uid.isBlank()) {
+            _currentUser.value = null
+            return
+        }
+        val user = userDao.getUserById(uid)
         if (user != null) {
             _currentUser.value = UserProfile(
                 id = user.id,
@@ -52,6 +76,8 @@ class PodcastRepository(private val database: AppDatabase) {
                 createdAt = user.createdAt,
                 totalListeningMinutes = user.totalListeningMinutes
             )
+        } else {
+            _currentUser.value = null
         }
     }
 
@@ -87,6 +113,12 @@ class PodcastRepository(private val database: AppDatabase) {
     fun getDownloadedEpisodes(): Flow<List<Episode>> =
         podcastDao.getDownloadedEpisodes().map { list -> list.map { it.toDomain() } }
 
+    fun getFavoriteEpisodes(): Flow<List<Episode>> =
+        podcastDao.getFavoriteEpisodes().map { list -> list.map { it.toDomain() } }
+
+    fun searchLocalEpisodes(query: String): Flow<List<Episode>> =
+        podcastDao.searchEpisodes(query).map { list -> list.map { it.toDomain() } }
+
     suspend fun getPodcastById(podcastId: String): Podcast? = withContext(Dispatchers.IO) {
         podcastDao.getPodcastById(podcastId)?.toDomain()
     }
@@ -111,29 +143,34 @@ class PodcastRepository(private val database: AppDatabase) {
         podcastDao.insertPodcasts(listOf(podcast.toEntity()))
     }
 
-    suspend fun toggleSubscription(podcastId: String) = withContext(Dispatchers.IO) {
-        val podcast = podcastDao.getPodcastById(podcastId) ?: return@withContext
+    suspend fun toggleSubscription(podcastId: String): Boolean = withContext(Dispatchers.IO) {
+        val podcast = podcastDao.getPodcastById(podcastId) ?: return@withContext false
         val newSub = !podcast.isSubscribed
         podcastDao.updateSubscription(podcastId, newSub)
+        newSub
     }
 
-    suspend fun toggleFavoritePodcast(podcastId: String) = withContext(Dispatchers.IO) {
+    suspend fun toggleFavoritePodcast(podcastId: String): Boolean = withContext(Dispatchers.IO) {
         val uid = _currentUserId.value
-        val podcast = podcastDao.getPodcastById(podcastId) ?: return@withContext
+        val podcast = podcastDao.getPodcastById(podcastId) ?: return@withContext false
         val newFav = !podcast.isFavorited
         podcastDao.updateFavorite(podcastId, newFav)
 
-        if (newFav) {
-            userDao.insertFavorite(FavoriteEntity(userId = uid, podcastId = podcastId))
-        } else {
-            userDao.removeFavorite(uid, podcastId)
+        if (uid.isNotBlank()) {
+            if (newFav) {
+                userDao.insertFavorite(FavoriteEntity(userId = uid, podcastId = podcastId))
+            } else {
+                userDao.removeFavorite(uid, podcastId)
+            }
         }
+        newFav
     }
 
-    suspend fun toggleEpisodeFavorite(episodeId: String) = withContext(Dispatchers.IO) {
-        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext
+    suspend fun toggleEpisodeFavorite(episodeId: String): Episode? = withContext(Dispatchers.IO) {
+        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext null
         val newFav = !episode.isFavorited
         podcastDao.updateEpisodeFavorite(episodeId, newFav)
+        episode.copy(isFavorited = newFav).toDomain()
     }
 
     suspend fun toggleQueue(episodeId: String) = withContext(Dispatchers.IO) {
@@ -142,34 +179,51 @@ class PodcastRepository(private val database: AppDatabase) {
         podcastDao.updateQueueStatus(episodeId, newQueue)
     }
 
-    suspend fun toggleDownload(episodeId: String) = withContext(Dispatchers.IO) {
-        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext
-        val newDown = !episode.isDownloaded
-        podcastDao.updateDownloadStatus(episodeId, newDown)
+    suspend fun toggleRealDownload(context: Context, episodeId: String): Boolean = withContext(Dispatchers.IO) {
+        val episode = podcastDao.getEpisodeById(episodeId) ?: return@withContext false
+        val domainEp = episode.toDomain()
+
+        if (episode.isDownloaded || PodcastDownloadHelper.isDownloadedLocally(context, episodeId)) {
+            // Delete downloaded file
+            PodcastDownloadHelper.deleteDownloadedEpisode(context, episodeId)
+            podcastDao.updateDownloadStatus(episodeId, false)
+            return@withContext false
+        } else {
+            // Truly download the MP3
+            val success = PodcastDownloadHelper.downloadEpisode(context, domainEp)
+            if (success) {
+                podcastDao.updateDownloadStatus(episodeId, true)
+            }
+            return@withContext success
+        }
     }
 
     suspend fun updatePlaybackPosition(episodeId: String, positionSeconds: Int, isPlayed: Boolean) =
         withContext(Dispatchers.IO) {
             podcastDao.updatePlaybackPosition(episodeId, positionSeconds, isPlayed)
             val uid = _currentUserId.value
-            userDao.insertHistory(
-                HistoryEntity(
-                    userId = uid,
-                    episodeId = episodeId,
-                    listenedAt = System.currentTimeMillis(),
-                    progressSeconds = positionSeconds,
-                    completed = isPlayed
+            if (uid.isNotBlank()) {
+                userDao.insertHistory(
+                    HistoryEntity(
+                        userId = uid,
+                        episodeId = episodeId,
+                        listenedAt = System.currentTimeMillis(),
+                        progressSeconds = positionSeconds,
+                        completed = isPlayed
+                    )
                 )
-            )
-            if (positionSeconds > 60) {
-                userDao.addListeningTime(uid, 1)
-                loadInitialUser()
+                if (positionSeconds > 60) {
+                    userDao.addListeningTime(uid, 1)
+                    loadActiveUser()
+                }
             }
         }
 
     suspend fun clearListeningHistory() = withContext(Dispatchers.IO) {
         val uid = _currentUserId.value
-        userDao.clearHistory(uid)
+        if (uid.isNotBlank()) {
+            userDao.clearHistory(uid)
+        }
         val episodes = podcastDao.getAllEpisodes().first()
         episodes.forEach { ep ->
             if (ep.playbackPositionSeconds > 0 || ep.isPlayed) {
@@ -178,11 +232,29 @@ class PodcastRepository(private val database: AppDatabase) {
         }
     }
 
-    suspend fun clearDownloads() = withContext(Dispatchers.IO) {
+    suspend fun clearDownloads(context: Context) = withContext(Dispatchers.IO) {
+        PodcastDownloadHelper.clearAllLocalDownloads(context)
         val episodes = podcastDao.getDownloadedEpisodes().first()
         episodes.forEach { ep ->
             podcastDao.updateDownloadStatus(ep.id, false)
         }
+    }
+
+    suspend fun clearAllUserAndDefaultData(context: Context) = withContext(Dispatchers.IO) {
+        // Clear all user tables
+        userDao.deleteAllUsers()
+        userDao.clearAllFavorites()
+        userDao.clearAllHistory()
+
+        // Reset all podcast user statuses
+        podcastDao.resetPodcastsUserData()
+        podcastDao.resetEpisodesUserData()
+
+        // Delete all local audio files
+        PodcastDownloadHelper.clearAllLocalDownloads(context)
+
+        _currentUserId.value = ""
+        _currentUser.value = null
     }
 
     // User Profile & Authentication
@@ -201,7 +273,11 @@ class PodcastRepository(private val database: AppDatabase) {
     suspend fun registerUser(username: String, email: String, fullName: String, passwordHash: String): Boolean =
         withContext(Dispatchers.IO) {
             val existing = userDao.getUserByEmail(email)
-            if (existing != null) return@withContext false
+            if (existing != null) {
+                _currentUserId.value = existing.id
+                loadActiveUser()
+                return@withContext true
+            }
 
             val colors = listOf("#1A73E8", "#EA4335", "#FBBC04", "#34A853", "#9C27B0")
             val chosenColor = colors.random()
@@ -218,9 +294,33 @@ class PodcastRepository(private val database: AppDatabase) {
             )
             userDao.insertUser(entity)
             _currentUserId.value = newUserId
-            loadInitialUser()
+            loadActiveUser()
             true
         }
+
+    suspend fun setFirebaseUser(uid: String, email: String, displayName: String) = withContext(Dispatchers.IO) {
+        val existing = userDao.getUserById(uid)
+        if (existing == null) {
+            val entity = UserEntity(
+                id = uid,
+                username = email.substringBefore("@"),
+                email = email,
+                fullName = displayName.ifBlank { "Google Kullanıcısı" },
+                avatarColorHex = "#1A73E8",
+                passwordHash = "",
+                createdAt = System.currentTimeMillis(),
+                totalListeningMinutes = 0
+            )
+            userDao.insertUser(entity)
+        }
+        _currentUserId.value = uid
+        loadActiveUser()
+    }
+
+    suspend fun clearCurrentUser() = withContext(Dispatchers.IO) {
+        _currentUserId.value = ""
+        _currentUser.value = null
+    }
 
     suspend fun loginUser(email: String, passwordHash: String): Boolean = withContext(Dispatchers.IO) {
         val user = userDao.getUserByEmail(email) ?: return@withContext false
@@ -228,7 +328,7 @@ class PodcastRepository(private val database: AppDatabase) {
             return@withContext false
         }
         _currentUserId.value = user.id
-        loadInitialUser()
+        loadActiveUser()
         true
     }
 
@@ -260,24 +360,12 @@ class PodcastRepository(private val database: AppDatabase) {
         }
     }
 
-    private suspend fun seedDatabaseIfEmpty() {
+    private suspend fun seedCleanCatalogIfEmpty() {
         val existing = podcastDao.getAllPodcasts().first()
         if (existing.isNotEmpty()) return
 
-        // Default User
-        val defaultUser = UserEntity(
-            id = "user_ismail",
-            username = "ismailsevik",
-            email = "ismailseviktr@gmail.com",
-            fullName = "İsmail Şevik",
-            avatarColorHex = "#1A73E8",
-            passwordHash = "123456",
-            createdAt = System.currentTimeMillis() - 86400000L * 45,
-            totalListeningMinutes = 340
-        )
-        userDao.insertUser(defaultUser)
-
-        val samplePodcasts = listOf(
+        // Seed clean Turkish podcasts without any pre-set user state (no pre-subscriptions, no fake progress, no fake downloads)
+        val cleanPodcasts = listOf(
             PodcastEntity(
                 id = "pod_1",
                 title = "Fularsız Entellik",
@@ -287,21 +375,21 @@ class PodcastRepository(private val database: AppDatabase) {
                 category = "Bilim ve Keşif",
                 totalEpisodes = 264,
                 subscriberCount = 84000,
-                isSubscribed = true,
-                isFavorited = true,
+                isSubscribed = false,
+                isFavorited = false,
                 rating = 4.9
             ),
             PodcastEntity(
                 id = "pod_2",
                 title = "TeknoSeyir Haftalık Gündem",
                 author = "Murat Gamsız & Levent Pekcan",
-                description = "Bilişim dünyasında haftanın öne çıkan gelişmeleri, donanım, yazılım, yapay zeka ve internet dünyası değerlendirmeleri.",
+                description = "Bilişim dünyasında haftanın öne çıkan gelişmeleri, donanım, yazılım, yapay zeka ve internet dünyası değerlendirmeleri. RSS: https://teknoseyir.com/feed/podcast",
                 imageUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
                 category = "Teknoloji",
                 totalEpisodes = 620,
                 subscriberCount = 145000,
-                isSubscribed = true,
-                isFavorited = true,
+                isSubscribed = false,
+                isFavorited = false,
                 rating = 4.8
             ),
             PodcastEntity(
@@ -313,7 +401,7 @@ class PodcastRepository(private val database: AppDatabase) {
                 category = "Kültür ve Sanat",
                 totalEpisodes = 175,
                 subscriberCount = 112000,
-                isSubscribed = true,
+                isSubscribed = false,
                 isFavorited = false,
                 rating = 4.9
             ),
@@ -326,8 +414,8 @@ class PodcastRepository(private val database: AppDatabase) {
                 category = "Bilim ve Keşif",
                 totalEpisodes = 120,
                 subscriberCount = 168000,
-                isSubscribed = true,
-                isFavorited = true,
+                isSubscribed = false,
+                isFavorited = false,
                 rating = 5.0
             ),
             PodcastEntity(
@@ -339,8 +427,8 @@ class PodcastRepository(private val database: AppDatabase) {
                 category = "Komedi & Mizah",
                 totalEpisodes = 130,
                 subscriberCount = 189000,
-                isSubscribed = true,
-                isFavorited = true,
+                isSubscribed = false,
+                isFavorited = false,
                 rating = 4.9
             ),
             PodcastEntity(
@@ -378,15 +466,15 @@ class PodcastRepository(private val database: AppDatabase) {
                 category = "Canlı iRadyo",
                 totalEpisodes = 20,
                 subscriberCount = 38000,
-                isSubscribed = true,
-                isFavorited = true,
+                isSubscribed = false,
+                isFavorited = false,
                 rating = 4.9
             )
         )
-        podcastDao.insertPodcasts(samplePodcasts)
+        podcastDao.insertPodcasts(cleanPodcasts)
 
-        // Seed Episodes with real MP3 streaming podcast audio
-        val sampleEpisodes = listOf(
+        // Seed a few starter real episodes with 0 play progress, 0 download, 0 favorites
+        val cleanEpisodes = listOf(
             EpisodeEntity(
                 id = "ep_1_1",
                 podcastId = "pod_1",
@@ -395,13 +483,13 @@ class PodcastRepository(private val database: AppDatabase) {
                 title = "Popülizm: Halkçılık ve Son 100 Sene",
                 description = "Halk iradesi kavramının evrimi, modern siyaset sahnesi ve felsefi kökler.",
                 audioUrl = "https://traffic.megaphone.fm/PM8756052206.mp3",
-                durationSeconds = 2460, // 41 min
-                releaseDate = "Dün",
+                durationSeconds = 2460,
+                releaseDate = "Yeni",
                 isPlayed = false,
-                playbackPositionSeconds = 620,
-                isDownloaded = true,
-                isFavorited = true,
-                isInQueue = true
+                playbackPositionSeconds = 0,
+                isDownloaded = false,
+                isFavorited = false,
+                isInQueue = false
             ),
             EpisodeEntity(
                 id = "ep_1_2",
@@ -413,8 +501,8 @@ class PodcastRepository(private val database: AppDatabase) {
                 audioUrl = "https://traffic.megaphone.fm/PM2133641833.mp3",
                 durationSeconds = 2880,
                 releaseDate = "12 Eki",
-                isPlayed = true,
-                playbackPositionSeconds = 2880,
+                isPlayed = false,
+                playbackPositionSeconds = 0,
                 isDownloaded = false,
                 isFavorited = false,
                 isInQueue = false
@@ -431,25 +519,9 @@ class PodcastRepository(private val database: AppDatabase) {
                 releaseDate = "Bu Hafta",
                 isPlayed = false,
                 playbackPositionSeconds = 0,
-                isDownloaded = true,
-                isFavorited = true,
-                isInQueue = true
-            ),
-            EpisodeEntity(
-                id = "ep_2_1",
-                podcastId = "pod_2",
-                podcastTitle = "TeknoSeyir Haftalık Gündem",
-                podcastImageUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
-                title = "Haftalık Gündem Değerlendirmesi: Yonga Savaşları ve Açık Kaynak",
-                description = "Kuantum işlemciler, açık kaynak işletim sistemleri ve haftanın teknoloji haberleri.",
-                audioUrl = "https://traffic.megaphone.fm/PM2133641833.mp3",
-                durationSeconds = 3840,
-                releaseDate = "Bugün",
-                isPlayed = false,
-                playbackPositionSeconds = 120,
-                isDownloaded = true,
-                isFavorited = true,
-                isInQueue = true
+                isDownloaded = false,
+                isFavorited = false,
+                isInQueue = false
             ),
             EpisodeEntity(
                 id = "ep_8_1",
@@ -464,11 +536,11 @@ class PodcastRepository(private val database: AppDatabase) {
                 isPlayed = false,
                 playbackPositionSeconds = 0,
                 isDownloaded = false,
-                isFavorited = true,
+                isFavorited = false,
                 isInQueue = false
             )
         )
-        podcastDao.insertEpisodes(sampleEpisodes)
+        podcastDao.insertEpisodes(cleanEpisodes)
     }
 
     private fun PodcastEntity.toDomain() = Podcast(
@@ -502,7 +574,7 @@ class PodcastRepository(private val database: AppDatabase) {
         isInQueue = isInQueue
     )
 
-    private fun Podcast.toEntity() = PodcastEntity(
+    fun Podcast.toEntity() = PodcastEntity(
         id = id,
         title = title,
         author = author,
@@ -516,7 +588,7 @@ class PodcastRepository(private val database: AppDatabase) {
         rating = rating
     )
 
-    private fun Episode.toEntity() = EpisodeEntity(
+    fun Episode.toEntity() = EpisodeEntity(
         id = id,
         podcastId = podcastId,
         podcastTitle = podcastTitle,

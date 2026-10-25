@@ -428,22 +428,23 @@ fun TopChartItem(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
                     .clickable { onSubscribe() }
+                    .testTag("subscribe_button_${podcast.id}")
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
                     if (podcast.isSubscribed) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = null,
+                            contentDescription = "Abone Olundu",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
-                        text = if (podcast.isSubscribed) "Kayıtlı" else "Abone Ol",
+                        text = if (podcast.isSubscribed) "Abone" else "Abone Ol",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (podcast.isSubscribed) MaterialTheme.colorScheme.onSurfaceVariant else Color.White

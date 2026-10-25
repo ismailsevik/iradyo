@@ -149,7 +149,7 @@ fun PodcastCard(
                             Spacer(modifier = Modifier.width(2.dp))
                         }
                         Text(
-                            text = if (podcast.isSubscribed) "Kayıtlı" else "Abone Ol",
+                            text = if (podcast.isSubscribed) "Abone" else "Abone Ol",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (podcast.isSubscribed) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color.White

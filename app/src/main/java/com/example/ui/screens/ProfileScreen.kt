@@ -21,25 +21,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -115,6 +114,8 @@ fun ProfileScreen(
     onToggleWifiOnly: () -> Unit,
     onClearHistory: () -> Unit,
     onClearDownloads: () -> Unit,
+    onSignOutGoogle: () -> Unit,
+    onDeleteAccountAndData: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var profileSubTab by remember { mutableIntStateOf(0) } // 0: Favorites, 1: History, 2: Settings
@@ -125,6 +126,16 @@ fun ProfileScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+
+    val displayName = firebaseUser?.displayName
+        ?: currentUser?.fullName
+        ?: "Misafir Kullanıcı"
+
+    val displayEmail = firebaseUser?.email
+        ?: currentUser?.email
+        ?: "Giriş Yapılmadı (Yerel Kullanım)"
 
     LazyColumn(
         modifier = modifier
@@ -161,7 +172,7 @@ fun ProfileScreen(
                                 .background(avatarColor)
                         ) {
                             Text(
-                                text = currentUser?.fullName?.take(1)?.uppercase() ?: "İ",
+                                text = displayName.take(1).uppercase(),
                                 color = Color.White,
                                 fontSize = 34.sp,
                                 fontWeight = FontWeight.Bold
@@ -193,7 +204,7 @@ fun ProfileScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = currentUser?.fullName ?: "Misafir Kullanıcı",
+                            text = displayName,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -216,7 +227,7 @@ fun ProfileScreen(
                     }
 
                     Text(
-                        text = currentUser?.email ?: "ismailseviktr@gmail.com",
+                        text = displayEmail,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -239,7 +250,7 @@ fun ProfileScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (firebaseUser != null) "Firebase Firestore: Bulut Aktif" else "Yerel Depolama (Firebase için bağlanın)",
+                                text = if (firebaseUser != null) "Google Hesabı: Bulut Kaydı Aktif" else "Yerel Depolama (Google ile bağlanın)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (firebaseUser != null) Color(0xFF137333) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -262,7 +273,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (firebaseUser != null) "Hesap / Firebase Yönetimi" else "Google / Firebase ile Giriş Yap",
+                            text = if (firebaseUser != null) "Hesap Yönetimi" else "Google ile Giriş Yap",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -306,7 +317,7 @@ fun ProfileScreen(
 
         // Sub Tabs: Beğenilenler, Dinleme Geçmişi, Ayarlar
         item {
-            val tabs = listOf("Beğenilen Podcast'ler", "Dinleme Geçmişi", "Ayarlar & Destek")
+            val tabs = listOf("Beğenilenler", "Dinleme Geçmişi", "Ayarlar")
             TabRow(
                 selectedTabIndex = profileSubTab,
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -357,7 +368,7 @@ fun ProfileScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Keşfet veya Ana Sayfadaki kalp simgesine dokunarak podcast'leri favorilerinize ekleyebilirsiniz.",
+                                text = "Keşfet veya Ana Sayfadaki kalp simgesine dokunarak podcast'leri favorilerinize ekleyebilirsiniz. Eklediğiniz podcast'ler Google hesabınıza otomatik kaydedilir.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -438,14 +449,14 @@ fun ProfileScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Dinleme geçmişiniz henüz oluşmadı",
+                                text = "Dinleme geçmişiniz boş",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Dinlediğiniz bölümler burada saklanır ve kaldığınız yerden devam edebilirsiniz.",
+                                text = "Dinlediğiniz bölümler burada saklanır ve kaldığınız yerden dinlemeye devam edebilirsiniz.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -467,81 +478,99 @@ fun ProfileScreen(
                 }
             }
             2 -> {
-                // Settings & In-App Purchase Tab
+                // Settings & Account Management Tab
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
 
-                        // --- 10 TL IN-APP BILLING SUPPORT CARD ---
+                        // --- 10 TL IN-APP BILLING SUPPORT (Sade ve göze batmayan tasarım) ---
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (isSupporter) Color(0xFFFFF8E1) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isSupporter) GoogleYellow else GoogleBlue.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp)
+                                .padding(bottom = 12.dp)
                                 .testTag("support_billing_card")
                         ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = if (isSupporter) Color(0xFFFFA000) else GoogleBlue,
-                                        modifier = Modifier.size(28.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isSupporter) Icons.Default.Check else Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = if (isSupporter) GoogleGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isSupporter) "Geliştirici Destekçisi" else "Geliştiriciye Destek Ol",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = if (isSupporter) "Geliştirici Destekçisi (10 ₺ Ödendi)" else "Geliştiriciye Destek Ol (10 ₺)",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = if (isSupporter) "Katkınız için minnettarız! Destekçi rozetiniz profilinizde parlıyor." else "Google Play In-App Billing ile 10 ₺ bağış yaparak iRadyo'yu destekleyin.",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Text(
+                                        text = if (isSupporter) "Katkınız için teşekkürler (10 ₺)" else "10 ₺ Google Play katkısı",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                TextButton(
+                                    onClick = {
+                                        (context as? Activity)?.let { onBuyDeveloperSupport(it) }
+                                            ?: onSimulateSupport()
+                                    },
+                                    modifier = Modifier.testTag("buy_support_10tl_button")
                                 ) {
-                                    Button(
-                                        onClick = {
-                                            (context as? Activity)?.let { onBuyDeveloperSupport(it) }
-                                                ?: onSimulateSupport()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isSupporter) Color(0xFFFFA000) else GoogleBlue
-                                        ),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f).testTag("buy_support_10tl_button")
-                                    ) {
-                                        Text(
-                                            text = if (isSupporter) "Yeniden Destek Ol (10 ₺)" else "10 ₺ Destek Ol (Google Play)",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-
-                                    if (!isSupporter) {
-                                        OutlinedButton(
-                                            onClick = onSimulateSupport,
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.testTag("simulate_support_button")
-                                        ) {
-                                            Text("Test Et", fontSize = 12.sp)
-                                        }
-                                    }
+                                    Text(
+                                        text = if (isSupporter) "Teşekkürler" else "Destekle",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
+
+                        // --- HESAP VE GİRİŞ YÖNETİMİ ---
+                        Text(
+                            text = "Hesap & Google İşlemleri",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GoogleBlue,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        // Google Sign-Out
+                        if (firebaseUser != null) {
+                            SettingItem(
+                                icon = Icons.AutoMirrored.Filled.Logout,
+                                iconColor = GoogleRed,
+                                title = "Google ile Giriş Yapma İşlemini Sonlandır",
+                                subtitle = "Aktif oturumu kapatır (${firebaseUser.email ?: "Google Hesabı"})",
+                                onClick = { showSignOutDialog = true }
+                            )
+                        } else {
+                            SettingItem(
+                                icon = Icons.Default.SwitchAccount,
+                                iconColor = GoogleBlue,
+                                title = "Google ile Giriş Yap",
+                                subtitle = "Podcast'lerinizi Google hesabınıza senkronize edin",
+                                onClick = onOpenAuthDialog
+                            )
+                        }
+
+                        // Delete Account and Cloud Data
+                        SettingItem(
+                            icon = Icons.Default.DeleteForever,
+                            iconColor = MaterialTheme.colorScheme.error,
+                            title = "Hesap Bilgilerini ve Verilerini Sil",
+                            subtitle = "Google hesabına bağlı kaydedilen tüm podcast yayınlarını, favorileri ve kullanıcı verilerini kalıcı olarak siler",
+                            onClick = { showDeleteAccountDialog = true }
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
                             text = "Oynatma & İndirme Ayarları",
@@ -583,7 +612,7 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Otomatik Bölüm İndirme", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                                Text("Abone olduğunuz kanalların yeni bölümlerini otomatik kaydet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Abone olduğunuz kanalların yeni bölümlerini otomatik cihaza kaydet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(
                                 checked = autoDownload,
@@ -616,7 +645,7 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Depolama & Veri Yönetimi",
+                            text = "Depolama & Cihaz Temizliği",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = GoogleBlue,
@@ -627,7 +656,7 @@ fun ProfileScreen(
                         SettingItem(
                             icon = Icons.Default.DeleteSweep,
                             title = "İndirilen Bölümleri Temizle",
-                            subtitle = "Cihazınızdaki çevrimdışı önbelleği boşaltın",
+                            subtitle = "Cihazınızdaki indirilen MP3 ses dosyalarını silerek depolama alanını boşaltır",
                             onClick = { showClearDownloadsDialog = true }
                         )
 
@@ -635,7 +664,7 @@ fun ProfileScreen(
                         SettingItem(
                             icon = Icons.Default.History,
                             title = "Dinleme Geçmişini Sıfırla",
-                            subtitle = "Tüm dinleme kayıtlarını ve ilerlemeleri siler",
+                            subtitle = "Tüm dinleme kayıtlarını ve ilerleme durumlarını temizler",
                             onClick = { showClearHistoryDialog = true }
                         )
 
@@ -643,7 +672,7 @@ fun ProfileScreen(
                         SettingItem(
                             icon = Icons.Outlined.Info,
                             title = "iRadyo Hakkında",
-                            subtitle = "Sürüm 3.0 • Google Podcasts Mimarisi • In-App Billing Aktif",
+                            subtitle = "Sürüm 6.0 • Google Podcasts Mimarisi • Firebase & In-App Billing",
                             onClick = {}
                         )
                     }
@@ -660,7 +689,7 @@ fun ProfileScreen(
             text = { Text(msg) },
             confirmButton = {
                 TextButton(onClick = onClearPurchaseMessage) {
-                    Text("Harika!")
+                    Text("Tamam")
                 }
             }
         )
@@ -700,6 +729,57 @@ fun ProfileScreen(
         )
     }
 
+    // Sign Out Confirmation Dialog
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            title = { Text("Google Oturumunu Sonlandır", fontWeight = FontWeight.Bold) },
+            text = { Text("Google hesabınızdan çıkış yapılacaktır. Çevrimdışı içerikleriniz cihazda kalır, bulut senkronizasyonu duraklatılır.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSignOutGoogle()
+                        showSignOutDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Oturumu Kapat", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutDialog = false }) { Text("Vazgeç") }
+            }
+        )
+    }
+
+    // Delete Account & Data Confirmation Dialog
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            title = { Text("Hesap Bilgilerini ve Verilerini Sil", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
+            text = {
+                Text(
+                    "Bu işlemle Google hesabınıza bağlı tüm kaydedilen podcastler, bölümler, favoriler ve dinleme geçmişiniz Firebase bulutundan ve cihazınızdan kalıcı olarak silinecektir.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteAccountAndData()
+                        showDeleteAccountDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_delete_account_button")
+                ) {
+                    Text("Evet, Tüm Verileri Sil", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) { Text("Vazgeç") }
+            }
+        )
+    }
+
     // Clear History Confirmation Dialog
     if (showClearHistoryDialog) {
         AlertDialog(
@@ -728,7 +808,7 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showClearDownloadsDialog = false },
             title = { Text("İndirilenleri Sil", fontWeight = FontWeight.Bold) },
-            text = { Text("Cihazınızda çevrimdışı saklanan tüm podcast bölümleri silinecek ve depolama alanı boşaltılacaktır.") },
+            text = { Text("Cihazınızda çevrimdışı saklanan tüm indirilmiş podcast MP3 dosyaları silinecek ve depolama alanı boşaltılacaktır.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -779,6 +859,7 @@ private fun StatItem(
 @Composable
 private fun SettingItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color = GoogleBlue,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -793,7 +874,7 @@ private fun SettingItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = GoogleBlue,
+            tint = iconColor,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))

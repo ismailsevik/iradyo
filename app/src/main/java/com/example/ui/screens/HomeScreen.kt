@@ -92,48 +92,85 @@ fun HomeScreen(
                     )
                 }
 
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(vertical = 8.dp)
-                ) {
-                    items(subscribedPodcasts, key = { it.id }) { podcast ->
-                        SubscriptionAvatarItem(
-                            podcast = podcast,
-                            onClick = { onPodcastClicked(podcast) }
-                        )
-                    }
-
-                    // "+ Keşfet" pill item at the end of carousel
-                    item {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .width(68.dp)
-                                .clickable { onNavigateToExplore() }
-                                .testTag("home_explore_more_button")
+                if (subscribedPodcasts.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clickable { onNavigateToExplore() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(60.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Keşfet",
-                                    tint = GoogleBlue,
-                                    modifier = Modifier.size(28.dp)
+                            Icon(
+                                imageVector = Icons.Default.Podcasts,
+                                contentDescription = null,
+                                tint = GoogleBlue,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Henüz bir podcast'e abone olmadınız",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Arama ve Keşfet ekranından dilediğiniz yayınlara abone olabilirsiniz.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Keşfet",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = GoogleBlue
+                        }
+                    }
+                } else {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        items(subscribedPodcasts, key = { it.id }) { podcast ->
+                            SubscriptionAvatarItem(
+                                podcast = podcast,
+                                onClick = { onPodcastClicked(podcast) }
                             )
+                        }
+
+                        // "+ Keşfet" pill item at the end of carousel
+                        item {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(68.dp)
+                                    .clickable { onNavigateToExplore() }
+                                    .testTag("home_explore_more_button")
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Keşfet",
+                                        tint = GoogleBlue,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Keşfet",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GoogleBlue
+                                )
+                            }
                         }
                     }
                 }

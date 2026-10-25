@@ -90,9 +90,9 @@ class BillingManager(
             .setProductList(productList)
             .build()
 
-        billingClient?.queryProductDetailsAsync(params) { billingResult, queryProductDetailsList ->
+        billingClient?.queryProductDetailsAsync(params) { billingResult, queryProductDetailsResult ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                productDetails = queryProductDetailsList.firstOrNull()
+                productDetails = queryProductDetailsResult.productDetailsList.firstOrNull()
             }
         }
     }

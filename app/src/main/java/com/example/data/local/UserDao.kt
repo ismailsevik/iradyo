@@ -45,4 +45,16 @@ interface UserDao {
 
     @Query("DELETE FROM history WHERE userId = :userId")
     suspend fun clearHistory(userId: String)
+
+    @Query("DELETE FROM users WHERE id = :userId")
+    suspend fun deleteUserById(userId: String)
+
+    @Query("DELETE FROM users")
+    suspend fun deleteAllUsers()
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearAllFavorites()
+
+    @Query("DELETE FROM history")
+    suspend fun clearAllHistory()
 }

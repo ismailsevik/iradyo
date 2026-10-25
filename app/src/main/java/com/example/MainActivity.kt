@@ -1,12 +1,17 @@
 package com.example
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -38,6 +43,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -95,6 +102,18 @@ fun MainAppContent(viewModel: MainViewModel) {
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
 
+    // Request notification permission for notification shade player controls (Android 13+)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { _ -> }
+        LaunchedEffect(Unit) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val activitySubTab by viewModel.activitySubTab.collectAsStateWithLifecycle()
     val homeFilterChip by viewModel.homeFilterChip.collectAsStateWithLifecycle()
@@ -111,6 +130,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val queuedEpisodes by viewModel.queuedEpisodes.collectAsStateWithLifecycle()
     val downloadedEpisodes by viewModel.downloadedEpisodes.collectAsStateWithLifecycle()
     val favoritePodcasts by viewModel.favoritePodcasts.collectAsStateWithLifecycle()
+    val favoriteEpisodes by viewModel.favoriteEpisodes.collectAsStateWithLifecycle()
     val listeningHistory by viewModel.listeningHistory.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
@@ -279,6 +299,8 @@ fun MainAppContent(viewModel: MainViewModel) {
                                 onSelectSubTab = { viewModel.selectActivitySubTab(it) },
                                 queuedEpisodes = queuedEpisodes,
                                 downloadedEpisodes = downloadedEpisodes,
+                                favoriteEpisodes = favoriteEpisodes,
+                                favoritePodcasts = favoritePodcasts,
                                 historyEpisodes = listeningHistory,
                                 subscribedPodcasts = subscribedPodcasts,
                                 currentPlayingEpisodeId = playerState.currentEpisode?.id,
@@ -288,7 +310,8 @@ fun MainAppContent(viewModel: MainViewModel) {
                                 onToggleDownload = { viewModel.toggleDownload(it.id) },
                                 onToggleFavorite = { viewModel.toggleFavoriteEpisode(it.id) },
                                 onPodcastClicked = { viewModel.openPodcastDetail(it) },
-                                onToggleSubscribe = { viewModel.toggleSubscription(it) }
+                                onToggleSubscribe = { viewModel.toggleSubscription(it) },
+                                onToggleFavoritePodcast = { viewModel.toggleFavoritePodcast(it) }
                             )
                         }
                         3 -> {
@@ -319,7 +342,9 @@ fun MainAppContent(viewModel: MainViewModel) {
                                 onToggleAutoDownload = { viewModel.toggleAutoDownload() },
                                 onToggleWifiOnly = { viewModel.toggleWifiOnlyDownload() },
                                 onClearHistory = { viewModel.clearListeningHistory() },
-                                onClearDownloads = { viewModel.clearDownloadedEpisodes() }
+                                onClearDownloads = { viewModel.clearDownloadedEpisodes() },
+                                onSignOutGoogle = { viewModel.signOutFirebase() },
+                                onDeleteAccountAndData = { viewModel.deleteAccountAndAllData { } }
                             )
                         }
                     }

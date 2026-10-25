@@ -66,4 +66,22 @@ interface PodcastDao {
 
     @Query("UPDATE episodes SET isFavorited = :isFavorited WHERE id = :episodeId")
     suspend fun updateEpisodeFavorite(episodeId: String, isFavorited: Boolean)
+
+    @Query("SELECT * FROM episodes WHERE isFavorited = 1")
+    fun getFavoriteEpisodes(): Flow<List<EpisodeEntity>>
+
+    @Query("SELECT * FROM episodes WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%'")
+    fun searchEpisodes(query: String): Flow<List<EpisodeEntity>>
+
+    @Query("UPDATE podcasts SET isSubscribed = 0, isFavorited = 0")
+    suspend fun resetPodcastsUserData()
+
+    @Query("UPDATE episodes SET isDownloaded = 0, isFavorited = 0, isInQueue = 0, playbackPositionSeconds = 0, isPlayed = 0")
+    suspend fun resetEpisodesUserData()
+
+    @Query("DELETE FROM podcasts")
+    suspend fun deleteAllPodcasts()
+
+    @Query("DELETE FROM episodes")
+    suspend fun deleteAllEpisodes()
 }
