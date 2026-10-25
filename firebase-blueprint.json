@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "iRadyo Firestore Schema",
+  "entities": {
+    "UserProfile": {
+      "collection": "users",
+      "path": "/users/{userId}",
+      "fields": {
+        "userId": { "type": "string", "required": true },
+        "email": { "type": "string", "required": true },
+        "displayName": { "type": "string", "required": false },
+        "photoUrl": { "type": "string", "required": false },
+        "totalListeningMinutes": { "type": "number", "required": false },
+        "updatedAt": { "type": "timestamp", "required": false }
+      }
+    },
+    "FavoritePodcast": {
+      "collection": "favorites",
+      "path": "/users/{userId}/favorites/{podcastId}",
+      "fields": {
+        "podcastId": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "author": { "type": "string", "required": true },
+        "imageUrl": { "type": "string", "required": false },
+        "category": { "type": "string", "required": false },
+        "rating": { "type": "number", "required": false },
+        "favoritedAt": { "type": "timestamp", "required": false }
+      }
+    },
+    "ListeningHistory": {
+      "collection": "history",
+      "path": "/users/{userId}/history/{episodeId}",
+      "fields": {
+        "episodeId": { "type": "string", "required": true },
+        "podcastId": { "type": "string", "required": true },
+        "podcastTitle": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "progressSeconds": { "type": "number", "required": true },
+        "durationSeconds": { "type": "number", "required": true },
+        "completed": { "type": "boolean", "required": false },
+        "listenedAt": { "type": "timestamp", "required": false }
+      }
+    },
+    "Subscription": {
+      "collection": "subscriptions",
+      "path": "/users/{userId}/subscriptions/{podcastId}",
+      "fields": {
+        "podcastId": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "author": { "type": "string", "required": false },
+        "imageUrl": { "type": "string", "required": false },
+        "subscribedAt": { "type": "timestamp", "required": false }
+      }
+    }
+  }
+}

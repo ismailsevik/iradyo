@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
@@ -71,6 +73,7 @@ import com.example.ui.theme.GoogleYellow
 @Composable
 fun ProfileScreen(
     currentUser: UserProfile?,
+    firebaseUser: com.google.firebase.auth.FirebaseUser?,
     favoritePodcasts: List<Podcast>,
     listeningHistory: List<Episode>,
     subscribedCount: Int,
@@ -143,7 +146,33 @@ fun ProfileScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    // Cloud Sync Badge
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (firebaseUser != null) Color(0xFFE6F4EA) else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (firebaseUser != null) Icons.Default.CloudDone else Icons.Default.CloudQueue,
+                                contentDescription = null,
+                                tint = if (firebaseUser != null) GoogleGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (firebaseUser != null) "Firebase Firestore: Bulut Aktif" else "Yerel Depolama (Firebase için bağlanın)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (firebaseUser != null) Color(0xFF137333) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Account switch / manage button
                     OutlinedButton(
@@ -157,7 +186,11 @@ fun ProfileScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Hesap Değiştir / Giriş Yap", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = if (firebaseUser != null) "Hesap / Firebase Yönetimi" else "Google / Firebase ile Giriş Yap",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(18.dp))

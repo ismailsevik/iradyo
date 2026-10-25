@@ -9,25 +9,34 @@ import com.example.data.model.Episode
 import com.example.data.model.PlayerState
 import com.example.data.model.Podcast
 import com.example.data.model.UserProfile
+import com.example.data.remote.FirebaseSyncRepository
 import com.example.data.repository.PodcastRepository
 import com.example.player.AudioPlayerManager
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
     val repository = PodcastRepository(database)
+    val firebaseSync = FirebaseSyncRepository(application)
+
+    val firebaseUser: StateFlow<FirebaseUser?> = firebaseSync.firebaseUser
+    val isSyncing: StateFlow<Boolean> = firebaseSync.isSyncing
+    val lastSyncTimestamp: StateFlow<Long?> = firebaseSync.lastSyncTimestamp
 
     val playerManager = AudioPlayerManager(application) { episodeId, positionSec, isCompleted ->
         viewModelScope.launch {
             repository.updatePlaybackPosition(episodeId, positionSec, isCompleted)
+            repository.getEpisodeById(episodeId)?.let { ep ->
+                firebaseSync.syncHistoryToCloud(ep.copy(playbackPositionSeconds = positionSec, isPlayed = isCompleted))
+            }
         }
     }
 
@@ -199,11 +208,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         playerManager.setSleepTimer(minutes)
     }
 
-    // User interactions
+    // User interactions + Firebase cloud synchronization
     fun toggleSubscription(podcastId: String) {
         viewModelScope.launch {
+            val podcast = repository.getPodcastById(podcastId)
             repository.toggleSubscription(podcastId)
-            // Refresh podcast detail if currently viewed
+            podcast?.let {
+                val newSub = !it.isSubscribed
+                firebaseSync.syncSubscriptionToCloud(it, newSub)
+            }
             _selectedPodcastDetail.value?.let { current ->
                 if (current.id == podcastId) {
                     _selectedPodcastDetail.value = current.copy(isSubscribed = !current.isSubscribed)
@@ -214,7 +227,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleFavoritePodcast(podcastId: String) {
         viewModelScope.launch {
+            val podcast = repository.getPodcastById(podcastId)
             repository.toggleFavoritePodcast(podcastId)
+            podcast?.let {
+                val newFav = !it.isFavorited
+                firebaseSync.syncFavoriteToCloud(it, newFav)
+            }
             _selectedPodcastDetail.value?.let { current ->
                 if (current.id == podcastId) {
                     _selectedPodcastDetail.value = current.copy(isFavorited = !current.isFavorited)
@@ -266,6 +284,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.switchUser(userId)
             hideAuthDialog()
         }
+    }
+
+    fun signInWithGoogleToken(idToken: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = firebaseSync.signInWithGoogleCredential(idToken)
+            if (success) {
+                firebaseSync.firebaseUser.value?.let { fbUser ->
+                    val email = fbUser.email ?: "google@iradyo.app"
+                    val name = fbUser.displayName ?: "Google Kullanıcısı"
+                    repository.registerUser(email.substringBefore("@"), email, name, "")
+                }
+                hideAuthDialog()
+            }
+            onResult(success)
+        }
+    }
+
+    fun signOutFirebase() {
+        firebaseSync.signOut()
     }
 
     override fun onCleared() {

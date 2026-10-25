@@ -1,6 +1,8 @@
 package com.example
 
+import android.app.Activity
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -36,11 +38,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.MainViewModel
 import com.example.ui.components.AuthDialog
@@ -54,6 +62,9 @@ import com.example.ui.screens.PodcastDetailScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.theme.GoogleBlue
 import com.example.ui.theme.MyApplicationTheme
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -73,6 +84,10 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainAppContent(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val credentialManager = remember { CredentialManager.create(context) }
+
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val activitySubTab by viewModel.activitySubTab.collectAsStateWithLifecycle()
     val homeFilterChip by viewModel.homeFilterChip.collectAsStateWithLifecycle()
@@ -92,6 +107,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val listeningHistory by viewModel.listeningHistory.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
+    val firebaseUser by viewModel.firebaseUser.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
 
     // Handle back button for sub-screens
@@ -263,6 +279,7 @@ fun MainAppContent(viewModel: MainViewModel) {
                         3 -> {
                             ProfileScreen(
                                 currentUser = currentUser,
+                                firebaseUser = firebaseUser,
                                 favoritePodcasts = favoritePodcasts,
                                 listeningHistory = listeningHistory,
                                 subscribedCount = subscribedPodcasts.size,
@@ -302,12 +319,44 @@ fun MainAppContent(viewModel: MainViewModel) {
             )
         }
 
-        // Auth & Profile Dialog
+        // Auth & Profile Dialog with Google Sign In
         if (isAuthDialogVisible) {
             AuthDialog(
                 currentUser = currentUser,
                 allUsers = allUsers,
+                firebaseUser = firebaseUser,
                 onDismiss = { viewModel.hideAuthDialog() },
+                onGoogleSignInClicked = {
+                    val clientId = try {
+                        context.getString(R.string.default_web_client_id)
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    if (clientId != null) {
+                        val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
+                        val request = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+                        coroutineScope.launch {
+                            try {
+                                val result = credentialManager.getCredential(context as Activity, request)
+                                val credential = result.credential
+                                if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                                    viewModel.signInWithGoogleToken(googleIdToken) { }
+                                }
+                            } catch (e: GetCredentialCancellationException) {
+                                Log.w("Auth", "Google Sign-In cancelled or dismissed: ${e.message}")
+                            } catch (e: Exception) {
+                                Log.e("Auth", "Google Sign-In failed", e)
+                            }
+                        }
+                    } else {
+                        Log.w("Auth", "default_web_client_id not available")
+                    }
+                },
+                onFirebaseSignOut = {
+                    viewModel.signOutFirebase()
+                },
                 onSwitchUser = { viewModel.switchUser(it) },
                 onLogin = { email, password, onResult ->
                     viewModel.loginUser(email, password, onResult)
