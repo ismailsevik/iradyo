@@ -1,0 +1,6 @@
+{
+  "name": "iRadyo",
+  "description": "Google Podcast'ler tasarımında modern podcast keşfetme, dinleme, profil ve radyo uygulaması.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

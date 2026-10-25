@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Google Podcasts iconic waveform bars -->
+    <!-- Bar 1: Green (Far left) -->
+    <path
+        android:fillColor="#34A853"
+        android:pathData="M35.5,46 C37.43,46 39,47.57 39,49.5 L39,58.5 C39,60.43 37.43,62 35.5,62 C33.57,62 32,60.43 32,58.5 L32,49.5 C32,47.57 33.57,46 35.5,46 Z" />
+    
+    <!-- Bar 2: Red (Center-left) -->
+    <path
+        android:fillColor="#EA4335"
+        android:pathData="M45.5,37 C47.43,37 49,38.57 49,40.5 L49,67.5 C49,69.43 47.43,71 45.5,71 C43.57,71 42,69.43 42,67.5 L42,40.5 C42,38.57 43.57,37 45.5,37 Z" />
+
+    <!-- Bar 3: Blue (Center tall) -->
+    <path
+        android:fillColor="#1A73E8"
+        android:pathData="M55.5,30 C57.43,30 59,31.57 59,33.5 L59,74.5 C59,76.43 57.43,78 55.5,78 C53.57,78 52,76.43 52,74.5 L52,33.5 C52,31.57 53.57,30 55.5,30 Z" />
+
+    <!-- Bar 4: Yellow (Center-right) -->
+    <path
+        android:fillColor="#FBBC04"
+        android:pathData="M65.5,38 C67.43,38 69,39.57 69,41.5 L69,66.5 C69,68.43 67.43,70 65.5,70 C63.57,70 62,68.43 62,66.5 L62,41.5 C62,39.57 63.57,38 65.5,38 Z" />
+
+    <!-- Bar 5: Green (Far right) -->
+    <path
+        android:fillColor="#34A853"
+        android:pathData="M75.5,47 C77.43,47 79,48.57 79,50.5 L79,57.5 C79,59.43 77.43,61 75.5,61 C73.57,61 72,59.43 72,57.5 L72,50.5 C72,48.57 73.57,47 75.5,47 Z" />
+</vector>
